@@ -1,5 +1,6 @@
 from elasticsearch import Elasticsearch
 import json
+from datetime import datetime
 
 es = Elasticsearch(['http://localhost:9200'])
 
@@ -44,18 +45,15 @@ def create_index(index_name):
 def index_video(index_name, video_data, transcript):
     """Index a video and its transcript."""
     try:
-        if not transcript:
-            print(f"No transcript for video {video_data['id']}")
-            return False
-
-        # Format transcript segments
+        # Format transcript segments if available
         formatted_transcript = []
-        for segment in transcript:
-            formatted_transcript.append({
-                "text": segment.get("text", ""),
-                "start": float(segment.get("start", 0)),
-                "duration": float(segment.get("duration", 0))
-            })
+        if transcript:
+            for segment in transcript:
+                formatted_transcript.append({
+                    "text": segment.get("text", ""),
+                    "start": float(segment.get("start", 0)),
+                    "duration": float(segment.get("duration", 0))
+                })
 
         # Prepare document
         document = {
@@ -128,7 +126,7 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None):
                         }
                     },
                     "inner_hits": {
-                        "size": 3,
+                        "size": 10,
                         "highlight": {
                             "pre_tags": ["<em>"],
                             "post_tags": ["</em>"],
@@ -229,4 +227,66 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None):
         return {
             'total': 0,
             'results': []
-        } 
+        }
+
+def create_metadata_index():
+    """Create or update the metadata index."""
+    metadata_index = "yts_metadata"
+    
+    if not es.indices.exists(index=metadata_index):
+        mapping = {
+            "mappings": {
+                "properties": {
+                    "playlist_id": {"type": "keyword"},
+                    "title": {"type": "text"},
+                    "thumbnail": {"type": "keyword"},
+                    "video_count": {"type": "integer"},
+                    "last_indexed": {"type": "date"},
+                    "indexed_videos": {"type": "integer"}
+                }
+            }
+        }
+        es.indices.create(index=metadata_index, body=mapping)
+        print(f"Created metadata index: {metadata_index}")
+
+def save_playlist_metadata(playlist_data, indexed_count):
+    """Save playlist metadata after indexing."""
+    try:
+        metadata = {
+            "playlist_id": playlist_data["id"],
+            "title": playlist_data["title"],
+            "thumbnail": playlist_data.get("thumbnail", ""),
+            "video_count": playlist_data["videoCount"],
+            "last_indexed": datetime.utcnow().isoformat(),
+            "indexed_videos": indexed_count
+        }
+        
+        es.index(
+            index="yts_metadata",
+            id=playlist_data["id"],
+            body=metadata,
+            refresh=True
+        )
+        print(f"Saved metadata for playlist {playlist_data['id']}")
+    except Exception as e:
+        print(f"Error saving playlist metadata: {e}")
+
+def get_indexed_playlists_metadata():
+    """Get metadata for all indexed playlists."""
+    try:
+        result = es.search(
+            index="yts_metadata",
+            body={
+                "size": 1000,
+                "query": {"match_all": {}},
+                "sort": [{"last_indexed": "desc"}]
+            }
+        )
+        
+        playlists = []
+        for hit in result["hits"]["hits"]:
+            playlists.append(hit["_source"])
+        return playlists
+    except Exception as e:
+        print(f"Error getting indexed playlists metadata: {e}")
+        return [] 
