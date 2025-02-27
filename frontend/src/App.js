@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import './App.css';
 import Auth from './components/Auth';
 import PlaylistSelector from './components/PlaylistSelector';
 import SearchInterface from './components/SearchInterface';
 import LoadingScreen from './components/LoadingScreen';
 import { indexPlaylist, logout, getIndexedPlaylists, deletePlaylistIndex, getIndexingStatus } from './services/api';
-import './App.css';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -13,23 +13,24 @@ function App() {
   const [indexingProgress, setIndexingProgress] = useState(null);
   const [indexedPlaylists, setIndexedPlaylists] = useState([]);
   const [error, setError] = useState(null);
-  const [showSearch, setShowSearch] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  const fetchIndexedPlaylists = useCallback(async () => {
-    if (!isAuthenticated) return;
-    try {
-      const response = await getIndexedPlaylists();
-      setIndexedPlaylists(response.data.indexed_playlists);
-    } catch (error) {
-      console.error('Error fetching indexed playlists:', error);
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchIndexedPlaylists();
     }
   }, [isAuthenticated]);
 
-  useEffect(() => {
-    fetchIndexedPlaylists();
-    const interval = setInterval(fetchIndexedPlaylists, 5000);
-    return () => clearInterval(interval);
-  }, [fetchIndexedPlaylists]);
+  const fetchIndexedPlaylists = async () => {
+    try {
+      const response = await getIndexedPlaylists();
+      setIndexedPlaylists(response.data.indexed_playlists || []);
+    } catch (error) {
+      console.error('Error fetching indexed playlists:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const checkIndexingStatus = useCallback(async () => {
     if (!selectedPlaylist || !isIndexing) return;
@@ -42,7 +43,10 @@ function App() {
         setIsIndexing(false);
         setIndexingProgress(null);
         await fetchIndexedPlaylists();
-        setShowSearch(true);
+        setSelectedPlaylist(prev => ({
+          ...prev,
+          isIndexed: true
+        }));
       } else if (status.status === 'failed') {
         setIsIndexing(false);
         setIndexingProgress(null);
@@ -56,7 +60,7 @@ function App() {
     } catch (error) {
       console.error('Error checking indexing status:', error);
     }
-  }, [selectedPlaylist, isIndexing, fetchIndexedPlaylists]);
+  }, [selectedPlaylist, isIndexing]);
 
   useEffect(() => {
     if (isIndexing) {
@@ -66,16 +70,22 @@ function App() {
   }, [isIndexing, checkIndexingStatus]);
 
   const handleSelectPlaylist = (playlist) => {
-    setSelectedPlaylist(playlist);
-    setError(null);
-    setShowSearch(isPlaylistIndexed(playlist.id));
+    const isIndexed = indexedPlaylists.some(
+      indexed => indexed.playlist_id === playlist.id
+    );
+    
+    setSelectedPlaylist({
+      ...playlist,
+      isIndexed
+    });
   };
 
   const handleIndexPlaylist = async () => {
+    if (!selectedPlaylist) return;
+    
     try {
       setError(null);
       setIsIndexing(true);
-      setShowSearch(false);
       await indexPlaylist(selectedPlaylist.id);
     } catch (error) {
       console.error('Error indexing playlist:', error);
@@ -84,90 +94,100 @@ function App() {
     }
   };
 
-  const handleDeleteIndex = async () => {
+  const handleLogout = async () => {
     try {
-      setError(null);
+      await logout();
+      setIsAuthenticated(false);
+      setSelectedPlaylist(null);
+      setIndexedPlaylists([]);
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
+  };
+
+  const handleDeleteIndex = async () => {
+    if (!selectedPlaylist) return;
+    
+    try {
       await deletePlaylistIndex(selectedPlaylist.id);
+      setSelectedPlaylist(null);
       await fetchIndexedPlaylists();
-      setShowSearch(false);
     } catch (error) {
       console.error('Error deleting index:', error);
       setError('Failed to delete index');
     }
   };
 
-  const isPlaylistIndexed = useCallback((playlistId) => {
-    return indexedPlaylists.some(id => id.toLowerCase() === playlistId.toLowerCase());
-  }, [indexedPlaylists]);
+  const renderContent = () => {
+    if (!selectedPlaylist) {
+      return loading ? (
+        <LoadingScreen message="Loading playlists..." />
+      ) : (
+        <PlaylistSelector 
+          onSelectPlaylist={handleSelectPlaylist} 
+          indexedPlaylists={indexedPlaylists}
+        />
+      );
+    }
 
-  const handleBackToPlaylists = () => {
-    setSelectedPlaylist(null);
-    setError(null);
-    setIsIndexing(false);
-    setIndexingProgress(null);
-    setShowSearch(false);
+    if (isIndexing) {
+      return (
+        <LoadingScreen 
+          message={
+            indexingProgress 
+              ? `Indexing playlist... (${indexingProgress.current}/${indexingProgress.total})`
+              : "Preparing to index playlist..."
+          } 
+        />
+      );
+    }
+
+    if (!selectedPlaylist.isIndexed) {
+      return (
+        <div className="index-container">
+          <div className="back-button-container">
+            <button onClick={() => setSelectedPlaylist(null)}>
+              ← Back to Playlists
+            </button>
+          </div>
+          <h2>{selectedPlaylist.title}</h2>
+          <p>This playlist needs to be indexed before you can search it.</p>
+          <button onClick={handleIndexPlaylist} className="index-button">
+            Start Indexing
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <SearchInterface 
+        playlist={selectedPlaylist}
+        onDeleteIndex={handleDeleteIndex}
+        onReindex={handleIndexPlaylist}
+      />
+    );
   };
 
   return (
     <div className="app">
-      {!isAuthenticated ? (
-        <Auth onAuthChange={setIsAuthenticated} />
-      ) : (
-        <>
-          <header className="app-header">
-            <h1>YouTube Transcript Search</h1>
-            <button className="logout-button" onClick={logout}>
-              Logout
-            </button>
-          </header>
+      <header className="app-header">
+        <h1>YouTube Transcript Search</h1>
+        {isAuthenticated && (
+          <button onClick={handleLogout} className="logout-button">
+            Logout
+          </button>
+        )}
+      </header>
 
-          {error && (
-            <div className="error-message">
-              {error}
-              <button onClick={() => setError(null)}>Dismiss</button>
-            </div>
-          )}
+      <Auth onAuthChange={setIsAuthenticated} />
 
-          {!selectedPlaylist ? (
-            <PlaylistSelector 
-              onSelectPlaylist={handleSelectPlaylist} 
-              indexedPlaylists={indexedPlaylists}
-            />
-          ) : (
-            <div className="playlist-view">
-              <div className="back-button-container">
-                <button onClick={handleBackToPlaylists}>
-                  ← Back to Playlists
-                </button>
-              </div>
+      {isAuthenticated && renderContent()}
 
-              {isIndexing ? (
-                <LoadingScreen 
-                  message={
-                    indexingProgress 
-                      ? `Indexing playlist... (${indexingProgress.current}/${indexingProgress.total})`
-                      : "Preparing to index playlist..."
-                  } 
-                />
-              ) : showSearch ? (
-                <SearchInterface 
-                  key={selectedPlaylist.id}
-                  playlist={selectedPlaylist}
-                  onDeleteIndex={handleDeleteIndex}
-                  onReindex={handleIndexPlaylist}
-                />
-              ) : (
-                <div className="index-container">
-                  <h2>Index Playlist</h2>
-                  <p>This playlist needs to be indexed before you can search it.</p>
-                  <button onClick={handleIndexPlaylist} disabled={isIndexing}>
-                    Start Indexing
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </>
+      {error && (
+        <div className="error-message">
+          {error}
+          <button onClick={() => setError(null)}>Dismiss</button>
+        </div>
       )}
     </div>
   );

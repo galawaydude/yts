@@ -2,17 +2,21 @@ from flask import jsonify, request, session, redirect, url_for
 from app import app, es
 from app.auth import get_auth_url, get_credentials, SCOPES
 from app.youtube import get_user_playlists, get_playlist_videos, get_video_transcript
-from app.elastic import create_index, index_video, search_videos
+from app.elastic import create_index, index_video, search_videos, create_metadata_index, save_playlist_metadata, get_indexed_playlists_metadata
 from google_auth_oauthlib.flow import Flow
 import os
 import threading
 import json
+from datetime import datetime
 
 CLIENT_SECRETS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "client_secret.json")
 
 # Global variables
 indexing_status = {}
 indexing_threads = {}
+
+# Add this after app initialization
+create_metadata_index()
 
 def index_playlist_task(playlist_id, credentials_dict):
     """Background task to index a playlist."""
@@ -47,9 +51,9 @@ def index_playlist_task(playlist_id, credentials_dict):
                     raise Exception("Indexing cancelled")
                     
                 transcript = get_video_transcript(video['id'])
-                if transcript:
-                    if index_video(index_name, video, transcript):
-                        success_count += 1
+                # Index video regardless of transcript availability
+                if index_video(index_name, video, transcript):
+                    success_count += 1
                 indexing_status[playlist_id]["progress"] = i + 1
             except Exception as e:
                 print(f"Error indexing video {video['id']}: {e}")
@@ -57,6 +61,15 @@ def index_playlist_task(playlist_id, credentials_dict):
         
         if success_count == 0:
             raise Exception("No videos could be indexed")
+        
+        # Save playlist metadata
+        playlist_data = {
+            "id": playlist_id,
+            "title": videos[0]["channelTitle"],  # Use first video's channel as playlist title
+            "videoCount": total_videos,
+            "thumbnail": videos[0].get("thumbnail", "")
+        }
+        save_playlist_metadata(playlist_data, success_count)
         
         # Mark as complete
         indexing_status[playlist_id]["status"] = "completed"
@@ -237,31 +250,42 @@ def delete_playlist_index(playlist_id):
     if not get_credentials():
         return jsonify({"error": "Not authenticated"}), 401
     
-    index_name = f"playlist_{playlist_id.lower()}"
-    if not es.indices.exists(index=index_name):
-        return jsonify({"error": "Playlist not indexed"}), 404
-    
-    es.indices.delete(index=index_name)
-    return jsonify({"success": True, "message": "Index deleted successfully"})
+    try:
+        index_name = f"playlist_{playlist_id.lower()}"
+        if not es.indices.exists(index=index_name):
+            return jsonify({"error": "Playlist not indexed"}), 404
+        
+        # Delete the index
+        es.indices.delete(index=index_name)
+        
+        # Delete the metadata
+        es.delete(
+            index="yts_metadata",
+            id=playlist_id,
+            ignore=[404]
+        )
+        
+        return jsonify({
+            "success": True,
+            "message": "Index and metadata deleted successfully"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/indexed-playlists')
 def get_indexed_playlists():
-    """Get a list of all indexed playlists."""
+    """Get a list of all indexed playlists with metadata."""
     if not get_credentials():
         return jsonify({"error": "Not authenticated"}), 401
     
-    indices = []
     try:
-        indices_response = es.indices.get(index='playlist_*')
-        for index in indices_response.keys():
-            # Extract the playlist ID from the index name and keep original case
-            playlist_id = index[9:]  # Remove 'playlist_' prefix
-            indices.append(playlist_id)
+        metadata = get_indexed_playlists_metadata()
+        return jsonify({
+            "indexed_playlists": metadata
+        })
     except Exception as e:
-        print(f"Error getting indices: {e}")
+        print(f"Error getting indexed playlists: {e}")
         return jsonify({"error": str(e)}), 500
-    
-    return jsonify({"indexed_playlists": indices})
 
 @app.route('/api/debug/index/<index_name>')
 def debug_index(index_name):

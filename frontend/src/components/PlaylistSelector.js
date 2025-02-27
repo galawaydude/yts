@@ -24,6 +24,10 @@ const PlaylistSelector = ({ onSelectPlaylist, indexedPlaylists }) => {
     }
   };
 
+  const isPlaylistIndexed = (playlistId) => {
+    return indexedPlaylists.some(indexed => indexed.playlist_id === playlistId);
+  };
+
   if (loading) {
     return <div className="loading">Loading your playlists...</div>;
   }
@@ -44,7 +48,7 @@ const PlaylistSelector = ({ onSelectPlaylist, indexedPlaylists }) => {
         {playlists.map(playlist => (
           <div 
             key={playlist.id} 
-            className={`playlist-card ${indexedPlaylists.includes(playlist.id) ? 'indexed' : ''}`}
+            className={`playlist-card ${isPlaylistIndexed(playlist.id) ? 'indexed' : ''}`}
             onClick={() => onSelectPlaylist(playlist)}
           >
             <div className="playlist-thumbnail">
@@ -57,6 +61,9 @@ const PlaylistSelector = ({ onSelectPlaylist, indexedPlaylists }) => {
             <div className="playlist-info">
               <h3>{playlist.title}</h3>
               <p>{playlist.videoCount} videos</p>
+              {isPlaylistIndexed(playlist.id) && (
+                <span className="indexed-badge">Indexed</span>
+              )}
             </div>
           </div>
         ))}
