@@ -110,12 +110,21 @@ function App() {
     
     try {
       await deletePlaylistIndex(selectedPlaylist.id);
-      setSelectedPlaylist(null);
-      await fetchIndexedPlaylists();
+      
+      // Update the indexedPlaylists state to remove the deleted playlist
+      setIndexedPlaylists(prev => 
+        prev.filter(playlist => playlist.playlist_id !== selectedPlaylist.id)
+      );
+
+      setSelectedPlaylist(null); // Reset the selected playlist
     } catch (error) {
       console.error('Error deleting index:', error);
       setError('Failed to delete index');
     }
+  };
+
+  const handleBackToPlaylists = () => {
+    setSelectedPlaylist(null);
   };
 
   const renderContent = () => {
@@ -130,6 +139,15 @@ function App() {
       );
     }
 
+    // Always show the back button
+    const backButton = (
+      <div className="back-button-container">
+        <button onClick={handleBackToPlaylists} className="back-button">
+          ← Back to Playlists
+        </button>
+      </div>
+    );
+
     if (isIndexing) {
       return (
         <LoadingScreen 
@@ -142,29 +160,27 @@ function App() {
       );
     }
 
-    if (!selectedPlaylist.isIndexed) {
-      return (
-        <div className="index-container">
-          <div className="back-button-container">
-            <button onClick={() => setSelectedPlaylist(null)}>
-              ← Back to Playlists
-            </button>
-          </div>
-          <h2>{selectedPlaylist.title}</h2>
-          <p>This playlist needs to be indexed before you can search it.</p>
-          <button onClick={handleIndexPlaylist} className="index-button">
-            Start Indexing
-          </button>
-        </div>
-      );
-    }
-
     return (
-      <SearchInterface 
-        playlist={selectedPlaylist}
-        onDeleteIndex={handleDeleteIndex}
-        onReindex={handleIndexPlaylist}
-      />
+      <div className="playlist-content">
+        <div className="header-container">
+            <h2>{selectedPlaylist.title}</h2>
+            {backButton}
+        </div>
+        {selectedPlaylist.isIndexed ? (
+            <SearchInterface 
+                playlist={selectedPlaylist}
+                onDeleteIndex={handleDeleteIndex}
+                onReindex={handleIndexPlaylist}
+            />
+        ) : (
+            <div className="index-container">
+                <p>This playlist needs to be indexed before you can search it.</p>
+                <button onClick={handleIndexPlaylist} className="index-button">
+                    Start Indexing
+                </button>
+            </div>
+        )}
+      </div>
     );
   };
 
