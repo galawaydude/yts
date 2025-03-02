@@ -1,16 +1,3 @@
-add persistance
-fix the transcipts thing, like add more then 3
-if transcipts are not there take title and description
-add channel filtering
-and also add option videos in playlist
-
-just add characters
-add the increase context part
-
-
-stop limitting to 10 add pagination
-
-
-
-add export
-add the increase the context
+add channel filtering, first try and check if you can get 
+then add the option to download the index
+and after this, if you can add the feature to reindex only the new ones please do this i guess, and modify the above functionality accordinly

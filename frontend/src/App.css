@@ -492,6 +492,110 @@ a:hover {
   font-family: 'Space Mono', monospace;
 }
 
+/* Channel Filter Styles */
+.channel-filter-container {
+  margin: 20px 0;
+  padding: 20px;
+  background-color: var(--medium-color);
+  border-radius: var(--border-radius);
+  border-left: 5px solid var(--secondary-color);
+}
+
+.channel-filter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.channel-filter-header h3 {
+  margin: 0;
+  font-size: 18px;
+  text-shadow: none;
+}
+
+.clear-filters-button {
+  background-color: transparent;
+  color: var(--primary-color);
+  padding: 5px 10px;
+  font-size: 14px;
+  box-shadow: none;
+}
+
+.clear-filters-button:hover {
+  background-color: rgba(255, 107, 107, 0.1);
+  box-shadow: none;
+}
+
+.channel-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.channel-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background-color: var(--light-color);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 2px solid transparent;
+}
+
+.channel-chip:hover {
+  background-color: var(--dark-color);
+  border-color: var(--secondary-color);
+}
+
+.channel-chip.selected {
+  background-color: var(--secondary-color);
+  color: var(--dark-color);
+}
+
+.channel-chip .channel-name {
+  font-weight: bold;
+}
+
+.channel-chip .channel-count {
+  background-color: rgba(0, 0, 0, 0.2);
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 12px;
+  min-width: 24px;
+  text-align: center;
+}
+
+.channel-chip.selected .channel-count {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .channel-filter-chips {
+    gap: 8px;
+  }
+  
+  .channel-chip {
+    padding: 6px 10px;
+    font-size: 14px;
+  }
+}
+
+.search-fields {
+  display: flex;
+  gap: 15px;
+}
+
+@media (max-width: 768px) {
+  .search-fields {
+    flex-direction: column;
+    gap: 8px;
+  }
+}
+
 /* Video Results */
 .video-results {
   display: flex;

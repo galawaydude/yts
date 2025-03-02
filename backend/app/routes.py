@@ -2,7 +2,7 @@ from flask import jsonify, request, session, redirect, url_for
 from app import app, es
 from app.auth import get_auth_url, get_credentials, SCOPES
 from app.youtube import get_user_playlists, get_playlist_videos, get_video_transcript
-from app.elastic import create_index, index_video, search_videos, create_metadata_index, save_playlist_metadata, get_indexed_playlists_metadata
+from app.elastic import create_index, index_video, search_videos, create_metadata_index, save_playlist_metadata, get_indexed_playlists_metadata, get_channels_for_playlist
 from google_auth_oauthlib.flow import Flow
 import os
 import threading
@@ -222,6 +222,7 @@ def search_playlist(playlist_id):
         page = int(request.args.get('page', 1))
         size = int(request.args.get('size', 10))
         search_in = request.args.getlist('search_in')
+        channels = request.args.getlist('channel')
         
         if not query:
             return jsonify({"error": "Query parameter 'q' is required"}), 400
@@ -231,7 +232,11 @@ def search_playlist(playlist_id):
             return jsonify({"error": "Playlist not indexed yet"}), 404
         
         from_pos = (page - 1) * size
-        results = search_videos(index_name, query, size, from_pos, search_in)
+        
+        # Use the channel filter if channels are specified
+        channel_filter = channels if channels else None
+        
+        results = search_videos(index_name, query, size, from_pos, search_in, channel_filter)
         
         return jsonify(results)
         
@@ -243,6 +248,27 @@ def search_playlist(playlist_id):
             'total': 0,
             'results': []
         })
+
+@app.route('/api/playlist/<playlist_id>/channels')
+def get_playlist_channels(playlist_id):
+    """Get all unique channels in a playlist."""
+    try:
+        if not get_credentials():
+            return jsonify({"error": "Not authenticated"}), 401
+        
+        index_name = f"playlist_{playlist_id.lower()}"
+        if not es.indices.exists(index=index_name):
+            return jsonify({"error": "Playlist not indexed yet"}), 404
+        
+        channels = get_channels_for_playlist(index_name)
+        
+        return jsonify({
+            "channels": channels
+        })
+        
+    except Exception as e:
+        print(f"Error getting channels: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/playlist/<playlist_id>/delete-index', methods=['DELETE'])
 def delete_playlist_index(playlist_id):
@@ -318,4 +344,4 @@ def debug_index(index_name):
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    app.run(debug=True)

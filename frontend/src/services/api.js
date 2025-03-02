@@ -16,15 +16,21 @@ export const getIndexedPlaylists = () => api.get('/indexed-playlists');
 export const indexPlaylist = (playlistId) => api.post(`/playlist/${playlistId}/index`);
 export const deletePlaylistIndex = (playlistId) => api.delete(`/playlist/${playlistId}/delete-index`);
 export const getIndexingStatus = (playlistId) => api.get(`/indexing-status?playlist_id=${playlistId}`);
+export const getPlaylistChannels = (playlistId) => api.get(`/playlist/${playlistId}/channels`);
 
-export const searchPlaylist = (playlistId, query, searchIn = ['title', 'description', 'transcript'], page = 1, size = 10) => {
+export const searchPlaylist = (playlistId, query, searchIn = ['title', 'description', 'transcript'], page = 1, size = 10, channels = []) => {
   const params = new URLSearchParams();
   params.append('q', query);
   params.append('page', page);
   params.append('size', size);
   searchIn.forEach(field => params.append('search_in', field));
   
+  // Add channel filters if provided
+  if (channels && channels.length > 0) {
+    channels.forEach(channel => params.append('channel', channel));
+  }
+  
   return api.get(`/playlist/${playlistId}/search?${params.toString()}`);
 };
 
-export default api; 
+export default api;

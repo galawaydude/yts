@@ -16,9 +16,12 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
   const [searchPerformed, setSearchPerformed] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalResults, setTotalResults] = useState(0);
+  const [selectedChannels, setSelectedChannels] = useState([]);
+  const [channelsInResults, setChannelsInResults] = useState([]);
+  const [showChannelFilter, setShowChannelFilter] = useState(false);
   const resultsPerPage = 10;
 
-  const handleSearch = async (e, page = 1) => {
+  const handleSearch = async (e, page = 1, channelFilters = selectedChannels) => {
     if (e) e.preventDefault();
     if (!query.trim()) return;
 
@@ -29,11 +32,22 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
         .filter(([_, value]) => value)
         .map(([key]) => key);
 
-      const response = await searchPlaylist(playlist.id, query, selectedFields, page, resultsPerPage);
+      const response = await searchPlaylist(
+        playlist.id, 
+        query, 
+        selectedFields, 
+        page, 
+        resultsPerPage, 
+        channelFilters
+      );
+      
       setResults(response.data.results || []);
       setTotalResults(response.data.total || 0);
       setCurrentPage(page);
       setSearchPerformed(true);
+      
+      // Set channels from search results
+      setChannelsInResults(response.data.channels || []);
     } catch (error) {
       console.error('Search error:', error);
       setError(error.response?.data?.error || 'Failed to perform search');
@@ -47,6 +61,29 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
       ...prev,
       [field]: !prev[field]
     }));
+  };
+
+  const handleChannelToggle = (channelName) => {
+    setSelectedChannels(prev => {
+      if (prev.includes(channelName)) {
+        // Remove channel from filter
+        const newChannels = prev.filter(c => c !== channelName);
+        // Trigger new search with updated filters
+        handleSearch(null, 1, newChannels);
+        return newChannels;
+      } else {
+        // Add channel to filter
+        const newChannels = [...prev, channelName];
+        // Trigger new search with updated filters
+        handleSearch(null, 1, newChannels);
+        return newChannels;
+      }
+    });
+  };
+
+  const clearChannelFilters = () => {
+    setSelectedChannels([]);
+    handleSearch(null, 1, []);
   };
 
   const totalPages = Math.ceil(totalResults / resultsPerPage);
@@ -85,30 +122,32 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
         </div>
 
         <div className="search-options">
-          <label>
-            <input
-              type="checkbox"
-              checked={searchFields.title}
-              onChange={() => handleFieldToggle('title')}
-            />
-            Title
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={searchFields.description}
-              onChange={() => handleFieldToggle('description')}
-            />
-            Description
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={searchFields.transcript}
-              onChange={() => handleFieldToggle('transcript')}
-            />
-            Transcript
-          </label>
+          <div className="search-fields">
+            <label>
+              <input
+                type="checkbox"
+                checked={searchFields.title}
+                onChange={() => handleFieldToggle('title')}
+              />
+              Title
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={searchFields.description}
+                onChange={() => handleFieldToggle('description')}
+              />
+              Description
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={searchFields.transcript}
+                onChange={() => handleFieldToggle('transcript')}
+              />
+              Transcript
+            </label>
+          </div>
         </div>
       </form>
 
@@ -124,7 +163,38 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
         <>
           {results.length > 0 ? (
             <>
+              {/* Channel filter section - displayed after search results are shown */}
+              {channelsInResults.length > 0 && (
+                <div className="channel-filter-container">
+                  <div className="channel-filter-header">
+                    <h3>Filter by Channel</h3>
+                    {selectedChannels.length > 0 && (
+                      <button 
+                        type="button" 
+                        className="clear-filters-button"
+                        onClick={clearChannelFilters}
+                      >
+                        Clear Filters
+                      </button>
+                    )}
+                  </div>
+                  <div className="channel-filter-chips">
+                    {channelsInResults.map(channel => (
+                      <div 
+                        key={channel.name} 
+                        className={`channel-chip ${selectedChannels.includes(channel.name) ? 'selected' : ''}`}
+                        onClick={() => handleChannelToggle(channel.name)}
+                      >
+                        <span className="channel-name">{channel.name}</span>
+                        <span className="channel-count">{channel.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <VideoResults results={results} query={query} />
+              
               {totalPages > 1 && (
                 <div className="pagination">
                   <button 

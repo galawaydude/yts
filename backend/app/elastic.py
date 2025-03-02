@@ -78,7 +78,7 @@ def index_video(index_name, video_data, transcript):
         print(f"Error indexing video {video_data['id']}: {e}")
         return False
 
-def search_videos(index_name, query, size=10, from_pos=0, search_in=None):
+def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channel_filter=None):
     """Search for videos in the index."""
     try:
         if not search_in:
@@ -141,13 +141,41 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None):
                 }
             })
 
-        search_query = {
-            "query": {
-                "bool": {
-                    "should": should_clauses,
-                    "minimum_should_match": 1
+        # Create the main query
+        bool_query = {
+            "bool": {
+                "should": should_clauses,
+                "minimum_should_match": 1
+            }
+        }
+
+        # Add channel filter if specified
+        if channel_filter:
+            if isinstance(channel_filter, list):
+                bool_query["bool"]["filter"] = {
+                    "terms": {
+                        "channel": channel_filter
+                    }
                 }
-            },
+            else:
+                bool_query["bool"]["filter"] = {
+                    "term": {
+                        "channel": channel_filter
+                    }
+                }
+
+        # Add aggregation to get channels in search results
+        aggs = {
+            "channels_in_results": {
+                "terms": {
+                    "field": "channel",
+                    "size": 100  # Get up to 100 channels
+                }
+            }
+        }
+
+        search_query = {
+            "query": bool_query,
             "highlight": {
                 "pre_tags": ["<em>"],
                 "post_tags": ["</em>"],
@@ -161,6 +189,7 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None):
                     }
                 }
             },
+            "aggs": aggs,
             "size": size,
             "from": from_pos
         }
@@ -184,6 +213,17 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None):
         total_hits = hits.get('total', {})
         total_count = total_hits.get('value', 0) if isinstance(total_hits, dict) else total_hits
         hits = hits.get('hits', [])
+
+        # Extract channels from aggregation
+        channels_in_results = []
+        if 'aggregations' in response and 'channels_in_results' in response['aggregations']:
+            channels_buckets = response['aggregations']['channels_in_results']['buckets']
+            channels_in_results = [
+                {
+                    'name': bucket['key'],
+                    'count': bucket['doc_count']
+                } for bucket in channels_buckets
+            ]
 
         for hit in hits:
             source = hit.get('_source', {})
@@ -220,7 +260,8 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None):
 
         return {
             'total': total_count,
-            'results': results
+            'results': results,
+            'channels': channels_in_results
         }
 
     except Exception as e:
@@ -229,8 +270,40 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None):
         traceback.print_exc()
         return {
             'total': 0,
-            'results': []
+            'results': [],
+            'channels': []
         }
+
+def get_channels_for_playlist(index_name):
+    """Get all unique channels in a playlist."""
+    try:
+        agg_query = {
+            "size": 0,
+            "aggs": {
+                "unique_channels": {
+                    "terms": {
+                        "field": "channel",
+                        "size": 1000  # Get up to 1000 unique channels
+                    }
+                }
+            }
+        }
+        
+        response = es.search(index=index_name, body=agg_query)
+        
+        # Extract channel buckets
+        if hasattr(response, 'body'):
+            response = response.body
+        else:
+            response = dict(response)
+            
+        buckets = response.get('aggregations', {}).get('unique_channels', {}).get('buckets', [])
+        channels = [bucket.get('key') for bucket in buckets]
+        
+        return channels
+    except Exception as e:
+        print(f"Error getting channels: {e}")
+        return []
 
 def create_metadata_index():
     """Create or update the metadata index."""
@@ -292,4 +365,4 @@ def get_indexed_playlists_metadata():
         return playlists
     except Exception as e:
         print(f"Error getting indexed playlists metadata: {e}")
-        return [] 
+        return []
