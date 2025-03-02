@@ -1,7 +1,7 @@
 from flask import jsonify, request, session, redirect, url_for, send_file
 from app import app, es
 from app.auth import get_auth_url, get_credentials, SCOPES, get_client_config
-from app.youtube import get_user_playlists, get_playlist_videos, get_video_transcript
+from app.youtube import get_user_playlists, get_playlist_videos, get_video_transcript, build_youtube_client
 from app.elastic import create_index, index_video, search_videos, create_metadata_index, save_playlist_metadata, get_indexed_playlists_metadata, get_channels_for_playlist, export_playlist_data, get_indexed_video_ids
 from google_auth_oauthlib.flow import Flow
 import os
@@ -355,14 +355,36 @@ def delete_playlist_index(playlist_id):
 @app.route('/api/indexed-playlists')
 def get_indexed_playlists():
     """Get a list of all indexed playlists with metadata."""
-    if not get_credentials():
-        return jsonify({"error": "Not authenticated"}), 401
-    
     try:
-        metadata = get_indexed_playlists_metadata()
-        return jsonify({
-            "indexed_playlists": metadata
-        })
+        indexed_playlists = get_indexed_playlists_metadata()
+        
+        # For each indexed playlist, check if it needs updating
+        for playlist in indexed_playlists:
+            try:
+                # Get current video count from YouTube API
+                credentials = get_credentials()
+                if credentials:
+                    youtube = build_youtube_client(credentials)
+                    request = youtube.playlists().list(
+                        part="snippet,contentDetails",
+                        id=playlist['playlist_id']
+                    )
+                    response = request.execute()
+                    
+                    if response['items']:
+                        current_count = response['items'][0]['contentDetails']['itemCount']
+                        indexed_count = playlist.get('video_count', 0)
+                        
+                        # Add update status to the playlist metadata
+                        playlist['needs_update'] = current_count > indexed_count
+                        playlist['current_video_count'] = current_count
+                        playlist['behind_by'] = max(0, current_count - indexed_count)
+            except Exception as e:
+                print(f"Error checking update status for playlist {playlist['playlist_id']}: {e}")
+                # Don't fail the whole request if one playlist check fails
+                playlist['needs_update'] = False
+                
+        return jsonify({"indexed_playlists": indexed_playlists})
     except Exception as e:
         print(f"Error getting indexed playlists: {e}")
         return jsonify({"error": str(e)}), 500
