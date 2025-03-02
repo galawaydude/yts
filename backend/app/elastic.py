@@ -4,8 +4,8 @@ from datetime import datetime
 
 es = Elasticsearch(['http://localhost:9200'])
 
-def create_index(index_name):
-    """Create an index with the proper mapping."""
+def create_index(index_name, recreate=False):
+    """Create an index with the proper mapping if it doesn't exist or if recreate is True."""
     mapping = {
         "settings": {
             "index": {
@@ -34,13 +34,57 @@ def create_index(index_name):
         }
     }
 
-    # Delete index if it exists
-    if es.indices.exists(index=index_name):
-        es.indices.delete(index=index_name)
+    # Check if index exists
+    index_exists = es.indices.exists(index=index_name)
     
-    # Create new index
-    es.indices.create(index=index_name, body=mapping)
-    print(f"Created index: {index_name}")
+    # Delete index if it exists and recreate is True
+    if index_exists and recreate:
+        es.indices.delete(index=index_name)
+        es.indices.create(index=index_name, body=mapping)
+        print(f"Recreated index: {index_name}")
+        return True, 0  # Return True for created, 0 for existing docs count
+    
+    # Create new index if it doesn't exist
+    elif not index_exists:
+        es.indices.create(index=index_name, body=mapping)
+        print(f"Created new index: {index_name}")
+        return True, 0  # Return True for created, 0 for existing docs count
+    
+    # Index exists and we're not recreating it
+    else:
+        # Count existing documents
+        count_query = {"query": {"match_all": {}}}
+        count_result = es.count(index=index_name, body=count_query)
+        existing_count = count_result.get('count', 0)
+        print(f"Using existing index: {index_name} with {existing_count} documents")
+        return False, existing_count  # Return False for not created, count of existing docs
+
+def get_indexed_video_ids(index_name):
+    """Get a list of all video IDs already indexed."""
+    try:
+        # Check if index exists
+        if not es.indices.exists(index=index_name):
+            return []
+            
+        # Query to get all video IDs
+        query = {
+            "_source": ["video_id"],
+            "query": {"match_all": {}},
+            "size": 10000  # Set a reasonable limit
+        }
+        
+        # Execute the search
+        response = es.search(index=index_name, body=query)
+        
+        # Extract video IDs
+        hits = response.get('hits', {}).get('hits', [])
+        video_ids = [hit.get('_source', {}).get('video_id') for hit in hits if hit.get('_source', {}).get('video_id')]
+        
+        return video_ids
+        
+    except Exception as e:
+        print(f"Error getting indexed video IDs: {e}")
+        return []
 
 def index_video(index_name, video_data, transcript):
     """Index a video and its transcript."""
