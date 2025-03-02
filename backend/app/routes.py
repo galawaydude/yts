@@ -1,6 +1,6 @@
 from flask import jsonify, request, session, redirect, url_for, send_file
 from app import app, es
-from app.auth import get_auth_url, get_credentials, SCOPES
+from app.auth import get_auth_url, get_credentials, SCOPES, get_client_config
 from app.youtube import get_user_playlists, get_playlist_videos, get_video_transcript
 from app.elastic import create_index, index_video, search_videos, create_metadata_index, save_playlist_metadata, get_indexed_playlists_metadata, get_channels_for_playlist, export_playlist_data, get_indexed_video_ids
 from google_auth_oauthlib.flow import Flow
@@ -132,27 +132,40 @@ def callback():
     """Handle OAuth callback."""
     state = session['state']
     
-    flow = Flow.from_client_secrets_file(
-        CLIENT_SECRETS_FILE,
-        scopes=SCOPES,
-        state=state,
-        redirect_uri=url_for('callback', _external=True)
-    )
-    
-    authorization_response = request.url
-    flow.fetch_token(authorization_response=authorization_response)
-    
-    credentials = flow.credentials
-    session['credentials'] = {
-        'token': credentials.token,
-        'refresh_token': credentials.refresh_token,
-        'token_uri': credentials.token_uri,
-        'client_id': credentials.client_id,
-        'client_secret': credentials.client_secret,
-        'scopes': credentials.scopes
-    }
-    
-    return redirect(app.config.get('FRONTEND_URL', 'http://localhost:3000'))
+    try:
+        # Get client config from auth module
+        client_config = get_client_config()
+        if not client_config:
+            return jsonify({"error": "No client configuration available"}), 500
+        
+        # Use the redirect URI from config
+        redirect_uri = app.config.get('OAUTH_REDIRECT_URI')
+        
+        flow = Flow.from_client_config(
+            client_config,
+            scopes=SCOPES,
+            state=state,
+            redirect_uri=redirect_uri
+        )
+        
+        authorization_response = request.url
+        flow.fetch_token(authorization_response=authorization_response)
+        
+        credentials = flow.credentials
+        session['credentials'] = {
+            'token': credentials.token,
+            'refresh_token': credentials.refresh_token,
+            'token_uri': credentials.token_uri,
+            'client_id': credentials.client_id,
+            'client_secret': credentials.client_secret,
+            'scopes': credentials.scopes
+        }
+        
+        # Redirect to the frontend URL from config
+        return redirect(app.config.get('FRONTEND_URL'))
+    except Exception as e:
+        app.logger.error(f"Error in OAuth callback: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/auth/logout')
 def logout():

@@ -1,11 +1,39 @@
 import axios from 'axios';
 
+// Use environment variable for API URL with fallback for local development
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
+// Log the API URL being used (helpful for debugging)
+console.log(`Using API URL: ${API_URL}`);
 
 const api = axios.create({
   baseURL: API_URL,
   withCredentials: true
 });
+
+// Add response interceptor for handling common errors
+api.interceptors.response.use(
+  response => response,
+  error => {
+    // Handle authentication errors
+    if (error.response && error.response.status === 401) {
+      console.error('Authentication error:', error);
+      // You could redirect to login page here if needed
+    }
+    
+    // Handle server errors
+    if (error.response && error.response.status >= 500) {
+      console.error('Server error:', error);
+    }
+    
+    // Handle network errors
+    if (error.message === 'Network Error') {
+      console.error('Network error - API server may be unavailable');
+    }
+    
+    return Promise.reject(error);
+  }
+);
 
 export const getAuthStatus = () => api.get('/auth/status');
 export const getLoginUrl = () => api.get('/auth/login');
