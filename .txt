@@ -3,3 +3,14 @@ fix the transcipts thing, like add more then 3
 if transcipts are not there take title and description
 add channel filtering
 and also add option videos in playlist
+
+just add characters
+add the increase context part
+
+
+stop limitting to 10 add pagination
+
+
+
+add export
+add the increase the context
