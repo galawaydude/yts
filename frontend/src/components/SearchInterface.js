@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { searchPlaylist, exportPlaylistData } from '../services/api';
+import { searchPlaylist, exportPlaylistData, getIndexingStatus } from '../services/api';
 import VideoResults from './VideoResults';
 import LoadingScreen from './LoadingScreen';
 
@@ -20,7 +20,24 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
   const [channelsInResults, setChannelsInResults] = useState([]);
   const [showChannelFilter, setShowChannelFilter] = useState(false);
   const [pendingChannelSearch, setPendingChannelSearch] = useState(false);
+  const [isIndexing, setIsIndexing] = useState(false);
   const resultsPerPage = 10;
+
+  // Check if the playlist is currently being indexed
+  useEffect(() => {
+    const checkIndexingStatus = async () => {
+      try {
+        const response = await getIndexingStatus(playlist.id);
+        setIsIndexing(response.data.status === 'in_progress');
+      } catch (error) {
+        console.error('Error checking indexing status:', error);
+      }
+    };
+
+    checkIndexingStatus();
+    const interval = setInterval(checkIndexingStatus, 5000);
+    return () => clearInterval(interval);
+  }, [playlist.id]);
 
   const handleSearch = async (e, page = 1, channelFilters = selectedChannels) => {
     if (e) e.preventDefault();
@@ -120,15 +137,19 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
           <button onClick={handleExportPlaylist} className="export-button">
             Export Data
           </button>
-          <button onClick={handleIncrementalReindex} className="reindex-button">
-            Update Index
-          </button>
-          <button onClick={handleFullReindex} className="full-reindex-button">
-            Full Reindex
-          </button>
-          <button onClick={onDeleteIndex} className="delete-index-button">
-            Delete Index
-          </button>
+          {!isIndexing && (
+            <>
+              <button onClick={handleIncrementalReindex} className="reindex-button">
+                Update Index
+              </button>
+              <button onClick={handleFullReindex} className="full-reindex-button">
+                Full Reindex
+              </button>
+              <button onClick={onDeleteIndex} className="delete-index-button">
+                Delete Index
+              </button>
+            </>
+          )}
         </div>
       </div>
 

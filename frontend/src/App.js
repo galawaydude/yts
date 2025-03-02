@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
-import Auth from './components/Auth';
 import PlaylistSelector from './components/PlaylistSelector';
 import SearchInterface from './components/SearchInterface';
 import LoadingScreen from './components/LoadingScreen';
-import { indexPlaylist, logout, getIndexedPlaylists, deletePlaylistIndex, getIndexingStatus } from './services/api';
+import LandingPage from './components/LandingPage';
+import { indexPlaylist, logout, getIndexedPlaylists, deletePlaylistIndex, getIndexingStatus, getAuthStatus } from './services/api';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -16,6 +16,26 @@ function App() {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState(null);
+
+  // Check authentication status on component mount
+  useEffect(() => {
+    const checkAuth = async () => {
+      setLoading(true);
+      try {
+        const response = await getAuthStatus();
+        setIsAuthenticated(response.data.authenticated);
+        if (response.data.authenticated) {
+          fetchIndexedPlaylists();
+        }
+      } catch (error) {
+        console.error('Error checking auth status:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    checkAuth();
+  }, []);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -222,6 +242,7 @@ function App() {
       setIsAuthenticated(false);
       setSelectedPlaylist(null);
       setIndexedPlaylists([]);
+      setIndexingPlaylists([]);
     } catch (error) {
       console.error('Error logging out:', error);
     }
@@ -285,9 +306,13 @@ function App() {
         ) : (
             <div className="index-container">
                 <p>This playlist needs to be indexed before you can search it.</p>
-                <button onClick={(e) => handleIndexPlaylist(true, e)} className="index-button">
-                    Start Indexing
-                </button>
+                {!indexingPlaylists.includes(selectedPlaylist.id) ? (
+                    <button onClick={(e) => handleIndexPlaylist(true, e)} className="index-button">
+                        Start Indexing
+                    </button>
+                ) : (
+                    <div className="indexing-message">Indexing in progress...</div>
+                )}
             </div>
         )}
       </div>
@@ -296,18 +321,22 @@ function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
-        <h1>YouTube Transcript Search</h1>
-        {isAuthenticated && (
-          <button onClick={handleLogout} className="logout-button">
-            Logout
-          </button>
-        )}
-      </header>
+      {loading ? (
+        <LoadingScreen message="Loading application..." />
+      ) : isAuthenticated ? (
+        <>
+          <header className="app-header">
+            <h1>YouTube Transcript Search</h1>
+            <button onClick={handleLogout} className="logout-button">
+              Logout
+            </button>
+          </header>
 
-      <Auth onAuthChange={setIsAuthenticated} />
-
-      {isAuthenticated && renderContent()}
+          {renderContent()}
+        </>
+      ) : (
+        <LandingPage />
+      )}
 
       {error && (
         <div className="error-message">
@@ -325,4 +354,4 @@ function App() {
   );
 }
 
-export default App; 
+export default App;
