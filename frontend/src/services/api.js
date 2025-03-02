@@ -33,4 +33,10 @@ export const searchPlaylist = (playlistId, query, searchIn = ['title', 'descript
   return api.get(`/playlist/${playlistId}/search?${params.toString()}`);
 };
 
+export const exportPlaylistData = (playlistId) => {
+  // Using window.open for direct download instead of axios
+  // This will trigger the browser's download behavior
+  window.open(`${API_URL}/playlist/${playlistId}/export`);
+};
+
 export default api;

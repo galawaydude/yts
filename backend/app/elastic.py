@@ -274,6 +274,67 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
             'channels': []
         }
 
+def export_playlist_data(index_name, max_size=10000):
+    """Export all data from a playlist index as JSON."""
+    try:
+        # Check if index exists
+        if not es.indices.exists(index=index_name):
+            return {"error": f"Index {index_name} does not exist"}, False
+
+        # Query to get all documents in the index
+        query = {
+            "query": {
+                "match_all": {}
+            },
+            "size": max_size  # Set a reasonable limit
+        }
+
+        # Execute the search
+        response = es.search(index=index_name, body=query)
+        
+        # Extract hits
+        hits = response.get('hits', {}).get('hits', [])
+        
+        # Format the data
+        playlist_data = []
+        for hit in hits:
+            source = hit.get('_source', {})
+            playlist_data.append(source)
+        
+        # Get metadata about the playlist if the metadata index exists
+        metadata = {}
+        if es.indices.exists(index="playlists_metadata"):
+            try:
+                metadata_query = {
+                    "query": {
+                        "term": {
+                            "index_name.keyword": index_name
+                        }
+                    }
+                }
+                
+                metadata_response = es.search(index="playlists_metadata", body=metadata_query)
+                metadata_hits = metadata_response.get('hits', {}).get('hits', [])
+                
+                if metadata_hits:
+                    metadata = metadata_hits[0].get('_source', {})
+            except Exception as e:
+                print(f"Error retrieving metadata (continuing without it): {e}")
+        
+        # Combine metadata and video data
+        export_data = {
+            "metadata": metadata,
+            "videos": playlist_data,
+            "exported_at": datetime.now().isoformat(),
+            "total_videos": len(playlist_data)
+        }
+        
+        return export_data, True
+        
+    except Exception as e:
+        print(f"Error exporting playlist data: {e}")
+        return {"error": str(e)}, False
+
 def get_channels_for_playlist(index_name):
     """Get all unique channels in a playlist."""
     try:
