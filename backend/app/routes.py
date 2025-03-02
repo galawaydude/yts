@@ -2,7 +2,7 @@ from flask import jsonify, request, session, redirect, url_for, send_file
 from app import app, es
 from app.auth import get_auth_url, get_credentials, SCOPES
 from app.youtube import get_user_playlists, get_playlist_videos, get_video_transcript
-from app.elastic import create_index, index_video, search_videos, create_metadata_index, save_playlist_metadata, get_indexed_playlists_metadata, get_channels_for_playlist, export_playlist_data
+from app.elastic import create_index, index_video, search_videos, create_metadata_index, save_playlist_metadata, get_indexed_playlists_metadata, get_channels_for_playlist, export_playlist_data, get_indexed_video_ids
 from google_auth_oauthlib.flow import Flow
 import os
 import threading
@@ -19,7 +19,7 @@ indexing_threads = {}
 # Add this after app initialization
 create_metadata_index()
 
-def index_playlist_task(playlist_id, credentials_dict):
+def index_playlist_task(playlist_id, credentials_dict, incremental=False):
     """Background task to index a playlist."""
     try:
         # Create credentials object from dictionary
@@ -40,28 +40,59 @@ def index_playlist_task(playlist_id, credentials_dict):
         total_videos = len(videos)
         indexing_status[playlist_id]["total"] = total_videos
         
-        # Create index
+        # Create or get index
         index_name = f"playlist_{playlist_id.lower()}"
-        create_index(index_name)
+        
+        # If incremental, don't recreate the index, otherwise create a new one
+        index_created, existing_count = create_index(index_name, recreate=not incremental)
+        
+        # Get list of already indexed video IDs if doing incremental indexing
+        already_indexed_ids = []
+        if incremental:
+            already_indexed_ids = get_indexed_video_ids(index_name)
+            print(f"Found {len(already_indexed_ids)} already indexed videos")
+            
+            # Update status with info about incremental indexing
+            indexing_status[playlist_id]["incremental"] = True
+            indexing_status[playlist_id]["already_indexed"] = len(already_indexed_ids)
         
         # Index each video
         success_count = 0
+        new_videos_count = 0
+        skipped_count = 0
+        
         for i, video in enumerate(videos):
             try:
                 if indexing_status[playlist_id].get("cancelled"):
                     raise Exception("Indexing cancelled")
-                    
+                
+                # Skip if video is already indexed and we're doing incremental indexing
+                if incremental and video['id'] in already_indexed_ids:
+                    skipped_count += 1
+                    indexing_status[playlist_id]["skipped"] = skipped_count
+                    indexing_status[playlist_id]["progress"] = i + 1
+                    continue
+                
                 transcript = get_video_transcript(video['id'])
                 # Index video regardless of transcript availability
                 if index_video(index_name, video, transcript):
                     success_count += 1
+                    new_videos_count += 1
                 indexing_status[playlist_id]["progress"] = i + 1
+                indexing_status[playlist_id]["new_videos"] = new_videos_count
             except Exception as e:
                 print(f"Error indexing video {video['id']}: {e}")
                 continue
         
-        if success_count == 0:
-            raise Exception("No videos could be indexed")
+        # For incremental indexing, count already indexed videos as successes
+        if incremental:
+            total_success = success_count + len(already_indexed_ids)
+            if success_count == 0 and len(already_indexed_ids) == 0:
+                raise Exception("No videos could be indexed")
+        else:
+            total_success = success_count
+            if success_count == 0:
+                raise Exception("No videos could be indexed")
         
         # Save playlist metadata
         playlist_data = {
@@ -70,11 +101,13 @@ def index_playlist_task(playlist_id, credentials_dict):
             "videoCount": total_videos,
             "thumbnail": videos[0].get("thumbnail", "")
         }
-        save_playlist_metadata(playlist_data, success_count)
+        save_playlist_metadata(playlist_data, total_success)
         
         # Mark as complete
         indexing_status[playlist_id]["status"] = "completed"
-        indexing_status[playlist_id]["success_count"] = success_count
+        indexing_status[playlist_id]["success_count"] = total_success
+        if incremental:
+            indexing_status[playlist_id]["new_videos_count"] = new_videos_count
         
     except Exception as e:
         error_message = str(e)
@@ -178,10 +211,14 @@ def index_playlist(playlist_id):
         return jsonify({"error": "Playlist is already being indexed"}), 409
     
     try:
+        # Check if this is an incremental reindex
+        incremental = request.json.get('incremental', False) if request.is_json else False
+        
         indexing_status[playlist_id] = {
             "status": "in_progress",
             "progress": 0,
-            "total": 0
+            "total": 0,
+            "incremental": incremental
         }
         
         # Create index with lowercase name for consistency
@@ -200,12 +237,15 @@ def index_playlist(playlist_id):
         # Start indexing in background thread
         thread = threading.Thread(
             target=index_playlist_task,
-            args=(playlist_id, credentials_dict)
+            args=(playlist_id, credentials_dict, incremental)
         )
         indexing_threads[playlist_id] = thread
         thread.start()
         
-        return jsonify({"success": True, "message": "Indexing started"})
+        return jsonify({
+            "success": True, 
+            "message": "Incremental indexing started" if incremental else "Full indexing started"
+        })
         
     except Exception as e:
         error_message = str(e)

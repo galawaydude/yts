@@ -92,6 +92,19 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
     exportPlaylistData(playlist.id);
   };
 
+  const handleIncrementalReindex = (e) => {
+    // Pass the event object to onReindex so it can be properly handled
+    onReindex(true, e);
+  };
+
+  const handleFullReindex = (e) => {
+    // Pass the event object to onReindex so it can be properly handled
+    e.preventDefault();
+    if (window.confirm("This will reindex the entire playlist from scratch. Continue?")) {
+      onReindex(false, e);
+    }
+  };
+
   const totalPages = Math.ceil(totalResults / resultsPerPage);
 
   const handlePageChange = (page) => {
@@ -107,8 +120,11 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
           <button onClick={handleExportPlaylist} className="export-button">
             Export Data
           </button>
-          <button onClick={onReindex} className="reindex-button">
-            Reindex Playlist
+          <button onClick={handleIncrementalReindex} className="reindex-button">
+            Update Index
+          </button>
+          <button onClick={handleFullReindex} className="full-reindex-button">
+            Full Reindex
           </button>
           <button onClick={onDeleteIndex} className="delete-index-button">
             Delete Index

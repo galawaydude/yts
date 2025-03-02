@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { getPlaylists } from '../services/api';
 
-const PlaylistSelector = ({ onSelectPlaylist, indexedPlaylists }) => {
+const PlaylistSelector = ({ onSelectPlaylist, indexedPlaylists, indexingPlaylists }) => {
   const [playlists, setPlaylists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -28,6 +28,10 @@ const PlaylistSelector = ({ onSelectPlaylist, indexedPlaylists }) => {
     return indexedPlaylists.some(indexed => indexed.playlist_id === playlistId);
   };
 
+  const isPlaylistIndexing = (playlistId) => {
+    return indexingPlaylists && indexingPlaylists.includes(playlistId);
+  };
+
   if (loading) {
     return <div className="loading">Loading your playlists...</div>;
   }
@@ -48,7 +52,7 @@ const PlaylistSelector = ({ onSelectPlaylist, indexedPlaylists }) => {
         {playlists.map(playlist => (
           <div 
             key={playlist.id} 
-            className={`playlist-card ${isPlaylistIndexed(playlist.id) ? 'indexed' : ''}`}
+            className={`playlist-card ${isPlaylistIndexed(playlist.id) ? 'indexed' : ''} ${isPlaylistIndexing(playlist.id) ? 'indexing' : ''}`}
             onClick={() => onSelectPlaylist(playlist)}
           >
             <div className="playlist-thumbnail">
@@ -61,7 +65,9 @@ const PlaylistSelector = ({ onSelectPlaylist, indexedPlaylists }) => {
             <div className="playlist-info">
               <h3>{playlist.title}</h3>
               <p>{playlist.videoCount} videos</p>
-              {isPlaylistIndexed(playlist.id) && (
+              {isPlaylistIndexing(playlist.id) ? (
+                <span className="indexing-badge">Indexing...</span>
+              ) : isPlaylistIndexed(playlist.id) && (
                 <span className="indexed-badge">Indexed</span>
               )}
             </div>
@@ -72,4 +78,4 @@ const PlaylistSelector = ({ onSelectPlaylist, indexedPlaylists }) => {
   );
 };
 
-export default PlaylistSelector; 
+export default PlaylistSelector;

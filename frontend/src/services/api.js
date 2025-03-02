@@ -13,7 +13,10 @@ export const logout = () => api.get('/auth/logout');
 
 export const getPlaylists = () => api.get('/playlists');
 export const getIndexedPlaylists = () => api.get('/indexed-playlists');
-export const indexPlaylist = (playlistId) => api.post(`/playlist/${playlistId}/index`);
+export const indexPlaylist = (playlistId, incremental = false) => {
+  // Make sure we're only sending a simple object with the incremental flag
+  return api.post(`/playlist/${playlistId}/index`, { incremental });
+};
 export const deletePlaylistIndex = (playlistId) => api.delete(`/playlist/${playlistId}/delete-index`);
 export const getIndexingStatus = (playlistId) => api.get(`/indexing-status?playlist_id=${playlistId}`);
 export const getPlaylistChannels = (playlistId) => api.get(`/playlist/${playlistId}/channels`);
