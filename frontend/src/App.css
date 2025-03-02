@@ -290,6 +290,38 @@ a:hover {
   font-size: 18px;
 }
 
+.playlist-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.playlist-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.export-button {
+  background-color: var(--accent-color);
+  color: var(--dark-color);
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.export-button:hover {
+  background-color: var(--secondary-color);
+  transform: translateY(-2px);
+}
+
+.export-button:active {
+  transform: translateY(0);
+}
+
 /* Index Container */
 .index-container {
   background-color: var(--medium-color);
@@ -514,6 +546,11 @@ a:hover {
   text-shadow: none;
 }
 
+.channel-filter-actions {
+  display: flex;
+  gap: 10px;
+}
+
 .clear-filters-button {
   background-color: transparent;
   color: var(--primary-color);
@@ -524,6 +561,19 @@ a:hover {
 
 .clear-filters-button:hover {
   background-color: rgba(255, 107, 107, 0.1);
+  box-shadow: none;
+}
+
+.apply-filters-button {
+  background-color: var(--secondary-color);
+  color: var(--dark-color);
+  padding: 5px 10px;
+  font-size: 14px;
+  box-shadow: none;
+}
+
+.apply-filters-button:hover {
+  background-color: var(--accent-color);
   box-shadow: none;
 }
 

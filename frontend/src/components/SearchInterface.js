@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { searchPlaylist } from '../services/api';
+import { searchPlaylist, exportPlaylistData } from '../services/api';
 import VideoResults from './VideoResults';
 import LoadingScreen from './LoadingScreen';
 
@@ -19,6 +19,7 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
   const [selectedChannels, setSelectedChannels] = useState([]);
   const [channelsInResults, setChannelsInResults] = useState([]);
   const [showChannelFilter, setShowChannelFilter] = useState(false);
+  const [pendingChannelSearch, setPendingChannelSearch] = useState(false);
   const resultsPerPage = 10;
 
   const handleSearch = async (e, page = 1, channelFilters = selectedChannels) => {
@@ -65,25 +66,30 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
 
   const handleChannelToggle = (channelName) => {
     setSelectedChannels(prev => {
-      if (prev.includes(channelName)) {
-        // Remove channel from filter
-        const newChannels = prev.filter(c => c !== channelName);
-        // Trigger new search with updated filters
-        handleSearch(null, 1, newChannels);
-        return newChannels;
-      } else {
-        // Add channel to filter
-        const newChannels = [...prev, channelName];
-        // Trigger new search with updated filters
-        handleSearch(null, 1, newChannels);
-        return newChannels;
-      }
+      const newChannels = prev.includes(channelName)
+        ? prev.filter(c => c !== channelName) // Remove channel if already selected
+        : [...prev, channelName];             // Add channel if not selected
+      
+      // Set flag that we have pending channel changes
+      setPendingChannelSearch(true);
+      
+      return newChannels;
     });
   };
 
   const clearChannelFilters = () => {
     setSelectedChannels([]);
     handleSearch(null, 1, []);
+    setPendingChannelSearch(false);
+  };
+
+  const applyChannelFilters = () => {
+    handleSearch(null, 1, selectedChannels);
+    setPendingChannelSearch(false);
+  };
+
+  const handleExportPlaylist = () => {
+    exportPlaylistData(playlist.id);
   };
 
   const totalPages = Math.ceil(totalResults / resultsPerPage);
@@ -95,9 +101,12 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
 
   return (
     <div className="search-interface">
-      <div className="search-header">
+      <div className="playlist-header">
         <h2>{playlist.title}</h2>
         <div className="playlist-actions">
+          <button onClick={handleExportPlaylist} className="export-button">
+            Export Data
+          </button>
           <button onClick={onReindex} className="reindex-button">
             Reindex Playlist
           </button>
@@ -168,15 +177,26 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
                 <div className="channel-filter-container">
                   <div className="channel-filter-header">
                     <h3>Filter by Channel</h3>
-                    {selectedChannels.length > 0 && (
-                      <button 
-                        type="button" 
-                        className="clear-filters-button"
-                        onClick={clearChannelFilters}
-                      >
-                        Clear Filters
-                      </button>
-                    )}
+                    <div className="channel-filter-actions">
+                      {pendingChannelSearch && (
+                        <button 
+                          type="button" 
+                          className="apply-filters-button"
+                          onClick={applyChannelFilters}
+                        >
+                          Apply Filters
+                        </button>
+                      )}
+                      {selectedChannels.length > 0 && (
+                        <button 
+                          type="button" 
+                          className="clear-filters-button"
+                          onClick={clearChannelFilters}
+                        >
+                          Clear Filters
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="channel-filter-chips">
                     {channelsInResults.map(channel => (

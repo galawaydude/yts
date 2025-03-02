@@ -1,13 +1,14 @@
-from flask import jsonify, request, session, redirect, url_for
+from flask import jsonify, request, session, redirect, url_for, send_file
 from app import app, es
 from app.auth import get_auth_url, get_credentials, SCOPES
 from app.youtube import get_user_playlists, get_playlist_videos, get_video_transcript
-from app.elastic import create_index, index_video, search_videos, create_metadata_index, save_playlist_metadata, get_indexed_playlists_metadata, get_channels_for_playlist
+from app.elastic import create_index, index_video, search_videos, create_metadata_index, save_playlist_metadata, get_indexed_playlists_metadata, get_channels_for_playlist, export_playlist_data
 from google_auth_oauthlib.flow import Flow
 import os
 import threading
 import json
 from datetime import datetime
+import tempfile
 
 CLIENT_SECRETS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "client_secret.json")
 
@@ -312,6 +313,40 @@ def get_indexed_playlists():
     except Exception as e:
         print(f"Error getting indexed playlists: {e}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/playlist/<playlist_id>/export', methods=['GET'])
+def export_playlist(playlist_id):
+    """Export the indexed playlist data as a downloadable JSON file."""
+    try:
+        # Check if user is authenticated
+        if 'credentials' not in session:
+            return jsonify({"error": "Not authenticated"}), 401
+            
+        # Format index name
+        index_name = f"playlist_{playlist_id.lower()}"
+        
+        # Get playlist data
+        data, success = export_playlist_data(index_name)
+        if not success:
+            return jsonify(data), 404
+            
+        # Create a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.json') as temp_file:
+            json.dump(data, temp_file, indent=2)
+            temp_path = temp_file.name
+            
+        # Send the file as an attachment
+        return send_file(
+            temp_path,
+            as_attachment=True,
+            download_name=f"playlist_{playlist_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            mimetype='application/json'
+        )
+        
+    except Exception as e:
+        error_message = str(e)
+        print(f"Error in export_playlist endpoint: {error_message}")
+        return jsonify({"error": error_message}), 500
 
 @app.route('/api/debug/index/<index_name>')
 def debug_index(index_name):
