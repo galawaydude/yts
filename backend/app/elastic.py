@@ -180,7 +180,10 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None):
         print("Raw response:", json.dumps(response, indent=2))
 
         results = []
-        hits = response.get('hits', {}).get('hits', [])
+        hits = response.get('hits', {})
+        total_hits = hits.get('total', {})
+        total_count = total_hits.get('value', 0) if isinstance(total_hits, dict) else total_hits
+        hits = hits.get('hits', [])
 
         for hit in hits:
             source = hit.get('_source', {})
@@ -203,20 +206,20 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None):
 
             result = {
                 'id': source.get('video_id'),
-                'title': source.get('title', ''),
-                'highlighted_title': highlights.get('title', [source.get('title', '')])[0] if 'title' in highlights else source.get('title', ''),
-                'description': source.get('description', ''),
-                'highlighted_description': highlights.get('description', [None])[0] if 'description' in highlights else None,
-                'thumbnail': source.get('thumbnail', ''),
-                'channel_title': source.get('channel', ''),
-                'published_at': source.get('published_at', ''),
-                'view_count': source.get('view_count', 0),
-                'matching_segments': matching_segments
+                'title': source.get('title'),
+                'description': source.get('description'),
+                'channel_title': source.get('channel'),
+                'published_at': source.get('published_at'),
+                'view_count': source.get('view_count'),
+                'thumbnail': source.get('thumbnail'),
+                'matching_segments': matching_segments,
+                'highlighted_title': highlights.get('title', [source.get('title')])[0] if highlights.get('title') else source.get('title'),
+                'highlighted_description': highlights.get('description', [''])[0] if highlights.get('description') else ''
             }
             results.append(result)
 
         return {
-            'total': response.get('hits', {}).get('total', {}).get('value', 0),
+            'total': total_count,
             'results': results
         }
 

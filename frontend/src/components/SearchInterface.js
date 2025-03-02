@@ -14,9 +14,12 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searchPerformed, setSearchPerformed] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalResults, setTotalResults] = useState(0);
+  const resultsPerPage = 10;
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
+  const handleSearch = async (e, page = 1) => {
+    if (e) e.preventDefault();
     if (!query.trim()) return;
 
     setLoading(true);
@@ -26,8 +29,10 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
         .filter(([_, value]) => value)
         .map(([key]) => key);
 
-      const response = await searchPlaylist(playlist.id, query, selectedFields);
+      const response = await searchPlaylist(playlist.id, query, selectedFields, page, resultsPerPage);
       setResults(response.data.results || []);
+      setTotalResults(response.data.total || 0);
+      setCurrentPage(page);
       setSearchPerformed(true);
     } catch (error) {
       console.error('Search error:', error);
@@ -42,6 +47,13 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
       ...prev,
       [field]: !prev[field]
     }));
+  };
+
+  const totalPages = Math.ceil(totalResults / resultsPerPage);
+
+  const handlePageChange = (page) => {
+    if (page < 1 || page > totalPages) return;
+    handleSearch(null, page);
   };
 
   return (
@@ -109,16 +121,41 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
       {loading ? (
         <LoadingScreen message="Searching..." />
       ) : searchPerformed ? (
-        results.length > 0 ? (
-          <VideoResults results={results} query={query} />
-        ) : (
-          <div className="no-results">
-            No videos found matching your search.
-          </div>
-        )
+        <>
+          {results.length > 0 ? (
+            <>
+              <VideoResults results={results} query={query} />
+              {totalPages > 1 && (
+                <div className="pagination">
+                  <button 
+                    onClick={() => handlePageChange(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="pagination-button"
+                  >
+                    Previous
+                  </button>
+                  <span className="pagination-info">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button 
+                    onClick={() => handlePageChange(currentPage + 1)}
+                    disabled={currentPage === totalPages}
+                    className="pagination-button"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="no-results">
+              No videos found matching your search.
+            </div>
+          )}
+        </>
       ) : null}
     </div>
   );
 };
 
-export default SearchInterface; 
+export default SearchInterface;
