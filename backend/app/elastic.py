@@ -127,74 +127,104 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
     try:
         if not search_in:
             search_in = ['title', 'description', 'transcript']
-
-        # Handle phrase queries
-        is_phrase = False
+            
+        print(f"Search request: index={index_name}, query='{query}', fields={search_in}")
+        
+        # Check if this is a phrase query (enclosed in quotes)
+        is_phrase_query = False
         if query.startswith('"') and query.endswith('"'):
-            is_phrase = True
-            query = query[1:-1]
-
-        should_clauses = []
-
-        # Add search clauses for each field
+            is_phrase_query = True
+            query = query[1:-1]  # Remove the quotes
+            print(f"Detected phrase query: '{query}'")
+        
+        # Define which fields to search in
+        fields_to_search = []
         if 'title' in search_in:
-            should_clauses.append({
-                "match_phrase" if is_phrase else "match": {
-                    "title": {
-                        "query": query,
-                        "boost": 3
-                    }
-                }
-            })
-
+            fields_to_search.append("title^3")  # Boost title matches
         if 'description' in search_in:
-            should_clauses.append({
-                "match_phrase" if is_phrase else "match": {
-                    "description": {
-                        "query": query,
-                        "boost": 2
-                    }
-                }
-            })
-
+            fields_to_search.append("description^2")  # Boost description matches
         if 'transcript' in search_in:
-            should_clauses.append({
-                "nested": {
-                    "path": "transcript_segments",
-                    "query": {
-                        "match_phrase" if is_phrase else "match": {
-                            "transcript_segments.text": {
-                                "query": query,
-                                "boost": 1
-                            }
+            fields_to_search.append("transcript_segments.text")
+            
+        print(f"Fields to search: {fields_to_search}")
+        
+        # Build the appropriate query based on whether it's a phrase query or not
+        if is_phrase_query:
+            # For phrase queries, use match_phrase
+            should_clauses = []
+            
+            if 'title' in search_in:
+                should_clauses.append({
+                    "match_phrase": {
+                        "title": {
+                            "query": query,
+                            "boost": 3
                         }
-                    },
-                    "inner_hits": {
-                        "size": 10,
-                        "highlight": {
-                            "pre_tags": ["<em>"],
-                            "post_tags": ["</em>"],
-                            "fields": {
+                    }
+                })
+                
+            if 'description' in search_in:
+                should_clauses.append({
+                    "match_phrase": {
+                        "description": {
+                            "query": query,
+                            "boost": 2
+                        }
+                    }
+                })
+                
+            if 'transcript' in search_in:
+                should_clauses.append({
+                    "nested": {
+                        "path": "transcript_segments",
+                        "query": {
+                            "match_phrase": {
                                 "transcript_segments.text": {
-                                    "number_of_fragments": 1,
-                                    "fragment_size": 200
+                                    "query": query,
+                                    "boost": 1
+                                }
+                            }
+                        },
+                        "inner_hits": {
+                            "size": 10,
+                            "highlight": {
+                                "pre_tags": ["<em>"],
+                                "post_tags": ["</em>"],
+                                "fields": {
+                                    "transcript_segments.text": {
+                                        "number_of_fragments": 1,
+                                        "fragment_size": 200
+                                    }
                                 }
                             }
                         }
                     }
+                })
+                
+            main_query = {
+                "bool": {
+                    "should": should_clauses,
+                    "minimum_should_match": 1
                 }
-            })
-
-        # Create the main query
-        bool_query = {
-            "bool": {
-                "should": should_clauses,
-                "minimum_should_match": 1
             }
-        }
-
+        else:
+            # For regular queries, use query_string with AND operator
+            main_query = {
+                "query_string": {
+                    "query": query,
+                    "fields": fields_to_search,
+                    "default_operator": "AND"  # This ensures all terms must match
+                }
+            }
+        
         # Add channel filter if specified
         if channel_filter:
+            bool_query = {
+                "bool": {
+                    "must": [main_query]
+                }
+            }
+            
             if isinstance(channel_filter, list):
                 bool_query["bool"]["filter"] = {
                     "terms": {
@@ -207,6 +237,10 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
                         "channel": channel_filter
                     }
                 }
+                
+            final_query = bool_query
+        else:
+            final_query = main_query
 
         # Add aggregation to get channels in search results
         aggs = {
@@ -219,7 +253,7 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
         }
 
         search_query = {
-            "query": bool_query,
+            "query": final_query,
             "highlight": {
                 "pre_tags": ["<em>"],
                 "post_tags": ["</em>"],
@@ -230,6 +264,10 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
                     "description": {
                         "number_of_fragments": 2,
                         "fragment_size": 150
+                    },
+                    "transcript_segments.text": {
+                        "number_of_fragments": 3,
+                        "fragment_size": 200
                     }
                 }
             },
@@ -248,74 +286,95 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
             response = raw_response.body
         else:
             response = dict(raw_response)
-
-        print("Raw response type:", type(response))
-        print("Raw response:", json.dumps(response, indent=2))
-
-        results = []
-        hits = response.get('hits', {})
-        total_hits = hits.get('total', {})
-        total_count = total_hits.get('value', 0) if isinstance(total_hits, dict) else total_hits
-        hits = hits.get('hits', [])
-
-        # Extract channels from aggregation
-        channels_in_results = []
+            
+        print(f"Search results: found {len(response.get('hits', {}).get('hits', []))} hits")
+        
+        # Extract hits
+        hits = response.get('hits', {}).get('hits', [])
+        total = response.get('hits', {}).get('total', {})
+        if isinstance(total, dict):
+            total_count = total.get('value', 0)
+        else:
+            total_count = total or 0
+            
+        # Extract channel aggregation
+        channels = []
         if 'aggregations' in response and 'channels_in_results' in response['aggregations']:
-            channels_buckets = response['aggregations']['channels_in_results']['buckets']
-            channels_in_results = [
-                {
+            for bucket in response['aggregations']['channels_in_results']['buckets']:
+                channels.append({
                     'name': bucket['key'],
                     'count': bucket['doc_count']
-                } for bucket in channels_buckets
-            ]
+                })
 
+        # Format results
+        results = []
         for hit in hits:
-            source = hit.get('_source', {})
-            highlights = hit.get('highlight', {})
+            source = hit['_source']
             
-            # Process transcript matches
-            matching_segments = []
-            inner_hits = hit.get('inner_hits', {}).get('transcript_segments', {}).get('hits', {}).get('hits', [])
-            
-            for inner_hit in inner_hits:
-                inner_source = inner_hit.get('_source', {})
-                inner_highlight = inner_hit.get('highlight', {})
-                
-                if 'transcript_segments.text' in inner_highlight:
-                    matching_segments.append({
-                        'text': inner_source.get('text', ''),
-                        'highlighted_text': inner_highlight['transcript_segments.text'][0],
-                        'start': inner_source.get('start', 0)
+            # Extract transcript matches if available
+            transcript_matches = []
+            if 'inner_hits' in hit and 'transcript_segments' in hit['inner_hits']:
+                for inner_hit in hit['inner_hits']['transcript_segments']['hits']['hits']:
+                    segment = inner_hit['_source']
+                    highlighted_text = inner_hit.get('highlight', {}).get('transcript_segments.text', [None])[0]
+                    transcript_matches.append({
+                        'text': segment['text'],
+                        'highlighted_text': highlighted_text or segment['text'],
+                        'start': segment['start'],
+                        'duration': segment['duration']
                     })
-
+            
+            # Get highlights
+            highlights = hit.get('highlight', {})
+            highlighted_title = highlights.get('title', [None])[0] if 'title' in highlights else None
+            highlighted_description = highlights.get('description', []) if 'description' in highlights else []
+            
+            # If we have transcript matches from nested query
+            if not transcript_matches and 'transcript_segments.text' in highlights:
+                # This is for the query_string approach which doesn't use nested queries
+                # We need to extract the transcript segments from the source
+                for segment in source.get('transcript_segments', []):
+                    for highlight in highlights.get('transcript_segments.text', []):
+                        if segment['text'] in highlight or highlight in segment['text']:
+                            transcript_matches.append({
+                                'text': segment['text'],
+                                'highlighted_text': highlight,
+                                'start': segment['start'],
+                                'duration': segment['duration']
+                            })
+                            break
+            
+            # Format the result
             result = {
-                'id': source.get('video_id'),
-                'title': source.get('title'),
-                'description': source.get('description'),
-                'channel_title': source.get('channel'),
-                'published_at': source.get('published_at'),
-                'view_count': source.get('view_count'),
-                'thumbnail': source.get('thumbnail'),
-                'matching_segments': matching_segments,
-                'highlighted_title': highlights.get('title', [source.get('title')])[0] if highlights.get('title') else source.get('title'),
-                'highlighted_description': highlights.get('description', [''])[0] if highlights.get('description') else ''
+                'id': source['video_id'],
+                'title': source.get('title', ''),
+                'highlighted_title': highlighted_title or source.get('title', ''),
+                'description': source.get('description', ''),
+                'highlighted_description': highlighted_description,
+                'channel_title': source.get('channel', ''),
+                'published_at': source.get('published_at', ''),
+                'view_count': source.get('view_count', '0'),
+                'thumbnail': source.get('thumbnail', ''),
+                'matching_segments': transcript_matches
             }
+            
             results.append(result)
-
+            
         return {
-            'total': total_count,
             'results': results,
-            'channels': channels_in_results
+            'total': total_count,
+            'channels': channels
         }
-
+        
     except Exception as e:
-        print(f"Search error: {e}")
         import traceback
-        traceback.print_exc()
+        print(f"Error in search_videos: {str(e)}")
+        print(traceback.format_exc())
         return {
-            'total': 0,
             'results': [],
-            'channels': []
+            'total': 0,
+            'channels': [],
+            'error': str(e)
         }
 
 def export_playlist_data(index_name, max_size=10000):
