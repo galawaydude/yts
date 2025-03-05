@@ -182,11 +182,15 @@ def auth_status():
 
 @app.route('/api/playlists')
 def playlists():
-    """Get user's playlists."""
+    """Get user's playlists, including owned and saved playlists."""
     if not get_credentials():
         return jsonify({"error": "Not authenticated"}), 401
     
     playlists = get_user_playlists()
+    
+    # Log the number of playlists found
+    print(f"Found {len(playlists)} playlists: {len([p for p in playlists if p.get('isOwn', False)])} owned, {len([p for p in playlists if not p.get('isOwn', False)])} saved")
+    
     return jsonify({"playlists": playlists})
 
 @app.route('/api/indexing-status', methods=['GET'])

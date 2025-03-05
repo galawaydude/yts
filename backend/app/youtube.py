@@ -4,7 +4,7 @@ import googleapiclient.discovery
 from google.oauth2.credentials import Credentials
 
 def get_user_playlists():
-    """Get all playlists for the authenticated user, including Liked Videos."""
+    """Get all playlists for the authenticated user, including Liked Videos and saved playlists."""
     youtube = build_youtube_client()
     if not youtube:
         return []
@@ -21,6 +21,7 @@ def get_user_playlists():
         
         if channels_response['items']:
             channel = channels_response['items'][0]
+            user_channel_id = channel['id']  # Store user's channel ID to check ownership
             liked_playlist_id = channel['contentDetails']['relatedPlaylists']['likes']
             
             # Get the liked videos playlist details
@@ -35,13 +36,14 @@ def get_user_playlists():
                     'id': liked_playlist_id,
                     'title': "Liked Videos",
                     'thumbnail': liked_playlist['snippet'].get('thumbnails', {}).get('default', {}).get('url', ''),
-                    'videoCount': liked_playlist['contentDetails']['itemCount']
+                    'videoCount': liked_playlist['contentDetails']['itemCount'],
+                    'isOwn': True
                 })
     except Exception as e:
         print(f"Error fetching Liked Videos playlist: {e}")
     
-    # Get regular playlists
     try:
+        # Get all playlists in user's library (both owned and saved)
         request = youtube.playlists().list(
             part="snippet,contentDetails",
             mine=True,
@@ -50,12 +52,41 @@ def get_user_playlists():
         response = request.execute()
         
         for item in response.get('items', []):
+            # Check if the playlist is owned by the user by comparing channel IDs
+            is_own = item['snippet']['channelId'] == user_channel_id
+            
             playlists.append({
                 'id': item['id'],
                 'title': item['snippet']['title'],
                 'thumbnail': item['snippet'].get('thumbnails', {}).get('default', {}).get('url', ''),
-                'videoCount': item['contentDetails']['itemCount']
+                'videoCount': item['contentDetails']['itemCount'],
+                'isOwn': is_own,
+                'channelTitle': item['snippet']['channelTitle'] if not is_own else None
             })
+            
+        # Handle pagination if there are more playlists
+        while 'nextPageToken' in response:
+            request = youtube.playlists().list(
+                part="snippet,contentDetails",
+                mine=True,
+                maxResults=50,
+                pageToken=response['nextPageToken']
+            )
+            response = request.execute()
+            
+            for item in response.get('items', []):
+                # Check if the playlist is owned by the user
+                is_own = item['snippet']['channelId'] == user_channel_id
+                
+                playlists.append({
+                    'id': item['id'],
+                    'title': item['snippet']['title'],
+                    'thumbnail': item['snippet'].get('thumbnails', {}).get('default', {}).get('url', ''),
+                    'videoCount': item['contentDetails']['itemCount'],
+                    'isOwn': is_own,
+                    'channelTitle': item['snippet']['channelTitle'] if not is_own else None
+                })
+                
     except Exception as e:
         print(f"Error fetching user playlists: {e}")
     
