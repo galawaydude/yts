@@ -22,6 +22,7 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
   const [pendingChannelSearch, setPendingChannelSearch] = useState(false);
   const [isIndexing, setIsIndexing] = useState(false);
   const resultsPerPage = 10;
+  const [pageInput, setPageInput] = useState('');
 
   // Check if the playlist is currently being indexed
   useEffect(() => {
@@ -207,6 +208,14 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
         <LoadingScreen message="Searching..." />
       ) : searchPerformed ? (
         <>
+          {/* Search Results Count */}
+          <div className="results-count-container">
+            <p className="results-count">
+              {totalResults === 0 ? 'No results found' : 
+               `Found ${totalResults} video${totalResults === 1 ? '' : 's'}`}
+            </p>
+          </div>
+
           {results.length > 0 ? (
             <>
               {/* Channel filter section - displayed after search results are shown */}
@@ -264,6 +273,27 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
                   <span className="pagination-info">
                     Page {currentPage} of {totalPages}
                   </span>
+                  <input
+                    type="number"
+                    min="1"
+                    max={totalPages}
+                    value={pageInput || ''}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setPageInput(value);
+                      const pageNum = parseInt(value);
+                      if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= totalPages) {
+                        handlePageChange(pageNum);
+                      }
+                    }}
+                    onBlur={() => {
+                      if (!pageInput || isNaN(parseInt(pageInput))) {
+                        setPageInput(currentPage.toString());
+                      }
+                    }}
+                    className="page-input"
+                    placeholder="#"
+                  />
                   <button 
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}
