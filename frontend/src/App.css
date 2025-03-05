@@ -4,14 +4,14 @@
 :root {
   --primary-color: #ff6b6b;
   --secondary-color: #4ecdc4;
-  --dark-color: #121212;
-  --medium-color: #1e1e1e;
-  --light-color: #2d2d2d;
+  --dark-color: #050505;
+  --medium-color: #0a0a0a;
+  --light-color: #101010;
   --text-color: #e0e0e0;
   --accent-color: #ffe66d;
-  --grid-color: rgba(255, 255, 255, 0.05);
+  --grid-color: rgba(255, 255, 255, 0.03);
   --border-radius: 8px;
-  --surface-color: rgba(255, 255, 255, 0.1);
+  --surface-color: rgba(255, 255, 255, 0.08);
   --primary-color-rgb: 255, 107, 107;
 }
 
