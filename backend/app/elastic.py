@@ -136,25 +136,18 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
             is_phrase_query = True
             query = query[1:-1]  # Remove the quotes
             print(f"Detected phrase query: '{query}'")
-        
-        # Define which fields to search in
-        fields_to_search = []
-        if 'title' in search_in:
-            fields_to_search.append("title^3")  # Boost title matches
-        if 'description' in search_in:
-            fields_to_search.append("description^2")  # Boost description matches
-        if 'transcript' in search_in:
-            fields_to_search.append("transcript_segments.text")
-            
-        print(f"Fields to search: {fields_to_search}")
-        
-        # Build the appropriate query based on whether it's a phrase query or not
+
+        # Build the base query
         if is_phrase_query:
-            # For phrase queries, use match_phrase
-            should_clauses = []
+            base_query = {
+                "bool": {
+                    "should": []
+                }
+            }
             
+            # Add phrase matches for title and description
             if 'title' in search_in:
-                should_clauses.append({
+                base_query["bool"]["should"].append({
                     "match_phrase": {
                         "title": {
                             "query": query,
@@ -162,9 +155,9 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
                         }
                     }
                 })
-                
+            
             if 'description' in search_in:
-                should_clauses.append({
+                base_query["bool"]["should"].append({
                     "match_phrase": {
                         "description": {
                             "query": query,
@@ -172,73 +165,109 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
                         }
                     }
                 })
-                
+            
+            # Add nested query for transcripts if needed
             if 'transcript' in search_in:
-                should_clauses.append({
+                base_query["bool"]["should"].append({
                     "nested": {
                         "path": "transcript_segments",
                         "query": {
                             "match_phrase": {
-                                "transcript_segments.text": {
-                                    "query": query,
-                                    "boost": 1
-                                }
+                                "transcript_segments.text": query
                             }
                         },
                         "inner_hits": {
-                            "size": 10,
                             "highlight": {
-                                "pre_tags": ["<em>"],
-                                "post_tags": ["</em>"],
                                 "fields": {
-                                    "transcript_segments.text": {
-                                        "number_of_fragments": 1,
-                                        "fragment_size": 200
-                                    }
+                                    "transcript_segments.text": {}
                                 }
                             }
                         }
                     }
                 })
-                
-            main_query = {
-                "bool": {
-                    "should": should_clauses,
-                    "minimum_should_match": 1
-                }
-            }
+            
+            base_query["bool"]["minimum_should_match"] = 1
+            main_query = base_query
+            
         else:
-            # For regular queries, use query_string with AND operator
-            main_query = {
-                "query_string": {
-                    "query": query,
-                    "fields": fields_to_search,
-                    "default_operator": "AND"  # This ensures all terms must match
+            # For regular queries, use match with AND operator
+            base_query = {
+                "bool": {
+                    "should": []
                 }
             }
-        
+            
+            # Add regular matches for title and description
+            if 'title' in search_in:
+                base_query["bool"]["should"].append({
+                    "match": {
+                        "title": {
+                            "query": query,
+                            "operator": "and",
+                            "boost": 3
+                        }
+                    }
+                })
+            
+            if 'description' in search_in:
+                base_query["bool"]["should"].append({
+                    "match": {
+                        "description": {
+                            "query": query,
+                            "operator": "and",
+                            "boost": 2
+                        }
+                    }
+                })
+            
+            # Add nested query for transcripts if needed
+            if 'transcript' in search_in:
+                base_query["bool"]["should"].append({
+                    "nested": {
+                        "path": "transcript_segments",
+                        "query": {
+                            "match": {
+                                "transcript_segments.text": {
+                                    "query": query,
+                                    "operator": "and"
+                                }
+                            }
+                        },
+                        "inner_hits": {
+                            "highlight": {
+                                "fields": {
+                                    "transcript_segments.text": {}
+                                }
+                            }
+                        }
+                    }
+                })
+            
+            base_query["bool"]["minimum_should_match"] = 1
+            main_query = base_query
+
         # Add channel filter if specified
         if channel_filter:
-            bool_query = {
+            filter_query = {
                 "bool": {
                     "must": [main_query]
                 }
             }
             
             if isinstance(channel_filter, list):
-                bool_query["bool"]["filter"] = {
+                filter_query["bool"]["filter"] = {
                     "terms": {
                         "channel": channel_filter
                     }
                 }
             else:
-                bool_query["bool"]["filter"] = {
+                filter_query["bool"]["filter"] = {
                     "term": {
                         "channel": channel_filter
                     }
                 }
-                
-            final_query = bool_query
+            
+            final_query = filter_query
         else:
             final_query = main_query
 
@@ -247,27 +276,22 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
             "channels_in_results": {
                 "terms": {
                     "field": "channel",
-                    "size": 100  # Get up to 100 channels
+                    "size": 100
                 }
             }
         }
 
+        # Build the complete search query
         search_query = {
             "query": final_query,
             "highlight": {
                 "pre_tags": ["<em>"],
                 "post_tags": ["</em>"],
                 "fields": {
-                    "title": {
-                        "number_of_fragments": 0
-                    },
+                    "title": {"number_of_fragments": 0},
                     "description": {
                         "number_of_fragments": 2,
                         "fragment_size": 150
-                    },
-                    "transcript_segments.text": {
-                        "number_of_fragments": 3,
-                        "fragment_size": 200
                     }
                 }
             },
