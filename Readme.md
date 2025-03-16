@@ -78,4 +78,4 @@ npm start
 ![Results page](./assets/results.png)
 
 
->**Note:**Have to work on deployment, cannot seem to find a cost free way to deploy elasticsearch properly.
+>Note:Have to work on deployment, cannot seem to find a cost free way to deploy elasticsearch properly.
