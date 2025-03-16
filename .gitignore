@@ -31,9 +31,3 @@ backend/Proclfile
 
 # Temporary and unnecessary scripts
 delete.py
-
-README.md
-DEPLOYMENT_GUIDE.md
-DEPLOYMENT.md
-LOCAL_SETUP.md
-*.txt
