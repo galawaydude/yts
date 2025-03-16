@@ -1,6 +1,6 @@
 # YouTube Transcript Search (YTS)
 
-A friend needed an application that let him, search videos from his personal playlists, based on the transcript information. A platform called filmot does this, but is not personalized for private playlists, I added that functionality, with a bunch of others.
+A friend needed a tool that let him, search videos from his personal playlists, based on the transcript information. A platform called filmot does this, but is not personalized for private playlists, I added that functionality, with a bunch of others.
 
 
 ## Tech Stack
