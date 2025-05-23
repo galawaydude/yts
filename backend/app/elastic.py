@@ -1,8 +1,11 @@
-from elasticsearch import Elasticsearch
+from app import app, es as elasticsearch_client # Import app for logger, and es client
+from elasticsearch import ElasticsearchException # Import specific exception
 import json
 from datetime import datetime
 
-es = Elasticsearch(['http://localhost:9200'])
+# Use es client imported from app and logger from app
+es = elasticsearch_client # Use the imported es client
+logger = app.logger 
 
 def create_index(index_name, recreate=False):
     """Create an index with the proper mapping if it doesn't exist or if recreate is True."""
@@ -41,13 +44,13 @@ def create_index(index_name, recreate=False):
     if index_exists and recreate:
         es.indices.delete(index=index_name)
         es.indices.create(index=index_name, body=mapping)
-        print(f"Recreated index: {index_name}")
+        logger.info(f"Recreated index: {index_name}")
         return True, 0  # Return True for created, 0 for existing docs count
     
     # Create new index if it doesn't exist
     elif not index_exists:
         es.indices.create(index=index_name, body=mapping)
-        print(f"Created new index: {index_name}")
+        logger.info(f"Created new index: {index_name}")
         return True, 0  # Return True for created, 0 for existing docs count
     
     # Index exists and we're not recreating it
@@ -56,7 +59,7 @@ def create_index(index_name, recreate=False):
         count_query = {"query": {"match_all": {}}}
         count_result = es.count(index=index_name, body=count_query)
         existing_count = count_result.get('count', 0)
-        print(f"Using existing index: {index_name} with {existing_count} documents")
+        logger.info(f"Using existing index: {index_name} with {existing_count} documents")
         return False, existing_count  # Return False for not created, count of existing docs
 
 def get_indexed_video_ids(index_name):
@@ -82,8 +85,8 @@ def get_indexed_video_ids(index_name):
         
         return video_ids
         
-    except Exception as e:
-        print(f"Error getting indexed video IDs: {e}")
+    except ElasticsearchException as e:
+        logger.error(f"Error getting indexed video IDs for {index_name}: {e}")
         return []
 
 def index_video(index_name, video_data, transcript):
@@ -112,14 +115,14 @@ def index_video(index_name, video_data, transcript):
         }
 
         # Index document
-        print(f"Indexing video {video_data['id']}")
+        logger.info(f"Indexing video {video_data['id']} in index {index_name}")
         es.index(index=index_name, id=video_data["id"], body=document)
-        es.indices.refresh(index=index_name)
-        print(f"Successfully indexed video {video_data['id']}")
+        es.indices.refresh(index=index_name) # Consider removing for bulk operations
+        logger.info(f"Successfully indexed video {video_data['id']}")
         return True
 
-    except Exception as e:
-        print(f"Error indexing video {video_data['id']}: {e}")
+    except ElasticsearchException as e:
+        logger.error(f"Error indexing video {video_data['id']} in index {index_name}: {e}")
         return False
 
 def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channel_filter=None):
@@ -128,14 +131,14 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
         if not search_in:
             search_in = ['title', 'description', 'transcript']
             
-        print(f"Search request: index={index_name}, query='{query}', fields={search_in}")
+        logger.info(f"Search request: index={index_name}, query='{query}', fields={search_in}, size={size}, from={from_pos}, channels={channel_filter}")
         
         # Check if this is a phrase query (enclosed in quotes)
         is_phrase_query = False
         if query.startswith('"') and query.endswith('"'):
             is_phrase_query = True
             query = query[1:-1]  # Remove the quotes
-            print(f"Detected phrase query: '{query}'")
+            logger.info(f"Detected phrase query: '{query}'")
         
         # Define which fields to search in
         fields_to_search = []
@@ -146,7 +149,7 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
         if 'transcript' in search_in:
             fields_to_search.append("transcript_segments.text")
             
-        print(f"Fields to search: {fields_to_search}")
+        logger.debug(f"Fields to search in Elasticsearch: {fields_to_search}")
         
         # Build the appropriate query based on whether it's a phrase query or not
         if is_phrase_query:
@@ -276,7 +279,7 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
             "from": from_pos
         }
 
-        print("Executing search query:", json.dumps(search_query, indent=2))
+        logger.debug(f"Executing search query: {json.dumps(search_query, indent=2)}")
 
         # Execute search
         raw_response = es.search(index=index_name, body=search_query)
@@ -287,7 +290,7 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
         else:
             response = dict(raw_response)
             
-        print(f"Search results: found {len(response.get('hits', {}).get('hits', []))} hits")
+        logger.info(f"Search results: found {len(response.get('hits', {}).get('hits', []))} hits for query '{query}' in index {index_name}")
         
         # Extract hits
         hits = response.get('hits', {}).get('hits', [])
@@ -366,10 +369,10 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
             'channels': channels
         }
         
-    except Exception as e:
+    except ElasticsearchException as e:
         import traceback
-        print(f"Error in search_videos: {str(e)}")
-        print(traceback.format_exc())
+        logger.error(f"Error in search_videos for index {index_name}, query '{query}': {str(e)}")
+        logger.error(traceback.format_exc())
         return {
             'results': [],
             'total': 0,
@@ -421,8 +424,8 @@ def export_playlist_data(index_name, max_size=10000):
                 
                 if metadata_hits:
                     metadata = metadata_hits[0].get('_source', {})
-            except Exception as e:
-                print(f"Error retrieving metadata (continuing without it): {e}")
+            except ElasticsearchException as e:
+                logger.warning(f"Error retrieving metadata for index {index_name} (continuing without it): {e}")
         
         # Combine metadata and video data
         export_data = {
@@ -434,8 +437,8 @@ def export_playlist_data(index_name, max_size=10000):
         
         return export_data, True
         
-    except Exception as e:
-        print(f"Error exporting playlist data: {e}")
+    except ElasticsearchException as e:
+        logger.error(f"Error exporting playlist data for index {index_name}: {e}")
         return {"error": str(e)}, False
 
 def get_channels_for_playlist(index_name):
@@ -465,8 +468,8 @@ def get_channels_for_playlist(index_name):
         channels = [bucket.get('key') for bucket in buckets]
         
         return channels
-    except Exception as e:
-        print(f"Error getting channels: {e}")
+    except ElasticsearchException as e:
+        logger.error(f"Error getting channels for playlist {index_name}: {e}")
         return []
 
 def create_metadata_index():
@@ -487,7 +490,7 @@ def create_metadata_index():
             }
         }
         es.indices.create(index=metadata_index, body=mapping)
-        print(f"Created metadata index: {metadata_index}")
+        logger.info(f"Created metadata index: {metadata_index}")
 
 def save_playlist_metadata(playlist_data, indexed_count):
     """Save playlist metadata after indexing."""
@@ -507,9 +510,52 @@ def save_playlist_metadata(playlist_data, indexed_count):
             body=metadata,
             refresh=True
         )
-        print(f"Saved metadata for playlist {playlist_data['id']}")
+        logger.info(f"Saved metadata for playlist {playlist_data['id']}")
+    except ElasticsearchException as e:
+        logger.error(f"Error saving playlist metadata for playlist {playlist_data['id']}: {e}")
+
+def bulk_index_videos(index_name, video_actions):
+    """
+    Indexes multiple video documents in bulk.
+    video_actions should be a list of dictionaries, conforming to ES bulk helper format.
+    Example action:
+    {
+        "_op_type": "index",  # Or "create", "update", "delete"
+        "_index": index_name,
+        "_id": video_data["id"],
+        "_source": document # The document body
+    }
+    """
+    from elasticsearch.helpers import bulk
+    successes = 0
+    errors = []
+
+    try:
+        # Attempt to execute the bulk operation
+        successes, errors = bulk(es, video_actions, index=index_name, raise_on_error=False, raise_on_exception=False)
+        
+        if errors:
+            logger.error(f"Bulk indexing to {index_name} encountered errors. Successes: {successes}. Errors: {len(errors)}")
+            for error_info in errors[:5]: # Log first 5 errors
+                logger.error(f"Bulk error detail: {error_info}")
+        else:
+            logger.info(f"Bulk indexing to {index_name} completed. Successes: {successes}.")
+            
+        if successes > 0:
+            es.indices.refresh(index=index_name)
+            logger.info(f"Refreshed index {index_name} after bulk operation.")
+            
+    except ElasticsearchException as e:
+        logger.error(f"ElasticsearchException during bulk indexing to {index_name}: {e}")
+        # Depending on the exception, all actions might have failed.
+        # The `bulk` helper with raise_on_error=False should catch individual doc errors.
+        # This block would catch more general ES issues (e.g. connection).
+        return 0, [str(e)] # Return 0 successes and the exception as an error
     except Exception as e:
-        print(f"Error saving playlist metadata: {e}")
+        logger.error(f"Unexpected error during bulk indexing to {index_name}: {e}", exc_info=True)
+        return 0, [str(e)]
+
+    return successes, errors # errors here are specific document errors from the bulk helper
 
 def get_indexed_playlists_metadata():
     """Get metadata for all indexed playlists."""
@@ -527,6 +573,6 @@ def get_indexed_playlists_metadata():
         for hit in result["hits"]["hits"]:
             playlists.append(hit["_source"])
         return playlists
-    except Exception as e:
-        print(f"Error getting indexed playlists metadata: {e}")
+    except ElasticsearchException as e:
+        logger.error(f"Error getting indexed playlists metadata: {e}")
         return []
