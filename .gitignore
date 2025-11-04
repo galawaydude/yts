@@ -37,3 +37,5 @@ DEPLOYMENT_GUIDE.md
 DEPLOYMENT.md
 LOCAL_SETUP.md
 *.txt
+
+.env
