@@ -1010,3 +1010,20 @@ em {
   pointer-events: none;
   z-index: 9999;
 } 
+
+
+/* ... (all your existing CSS is above) ... */
+
+/* Badge for update notification on playlist card */
+.update-badge {
+  position: absolute;
+  bottom: 15px;
+  right: 15px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: bold;
+  background-color: #0288d1; /* Blue color for info */
+  color: white;
+  animation: pulse 2s infinite; /* Re-use existing pulse animation */
+}
