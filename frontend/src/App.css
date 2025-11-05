@@ -1027,3 +1027,143 @@ em {
   color: white;
   animation: pulse 2s infinite; /* Re-use existing pulse animation */
 }
+
+/* ... (all your existing CSS) ... */
+
+/* Indexing Queue Styles */
+.indexing-queue-container {
+  width: 100%;
+  padding: 20px;
+  background-color: var(--medium-color);
+  border-radius: var(--border-radius);
+  margin-bottom: 30px;
+  border: 2px solid var(--secondary-color);
+}
+
+.indexing-queue-container h3 {
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  text-shadow: none;
+  color: var(--secondary-color);
+}
+
+.indexing-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 10px;
+  padding: 10px;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.queue-item-title {
+  flex: 0 0 30%;
+  font-weight: bold;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.queue-item-progress-bar {
+  flex: 1;
+  height: 20px;
+  background-color: var(--light-color);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.queue-item-progress-fill {
+  height: 100%;
+  background-color: var(--primary-color);
+  transition: width 0.3s ease-in-out;
+}
+
+.queue-item-status {
+  flex: 0 0 100px;
+  font-family: 'VT323', monospace;
+  font-size: 18px;
+  text-align: right;
+}
+
+/* ... (all your existing CSS) ... */
+
+/* Indexing Queue Styles (Modified) */
+.indexing-queue-container {
+  width: 100%;
+  padding: 0; /* Remove padding to make header full-width */
+  background-color: var(--medium-color);
+  border-radius: var(--border-radius);
+  margin-bottom: 30px;
+  border: 2px solid var(--secondary-color);
+  overflow: hidden; /* Ensures rounded corners on children */
+}
+
+/* NEW: Clickable Header */
+.indexing-queue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.indexing-queue-header:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.queue-header-left {
+  flex: 1;
+  margin-right: 20px;
+}
+
+.indexing-queue-container h3 {
+  margin: 0 0 0 0; /* Removed bottom margin */
+  font-size: 18px;
+  text-shadow: none;
+  color: var(--secondary-color);
+}
+
+/* NEW: Overall progress bar for collapsed view */
+.queue-overall-progress {
+  width: 100%;
+  height: 10px;
+  background-color: var(--light-color);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+/* NEW: Toggle button */
+.queue-toggle-button {
+  background-color: var(--secondary-color);
+  color: var(--dark-color);
+  padding: 5px 15px;
+  font-size: 14px;
+  box-shadow: none;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+.queue-toggle-button:hover {
+  background-color: var(--accent-color);
+  box-shadow: none;
+}
+
+/* NEW: Container for the items that will collapse */
+.queue-items-container {
+  padding: 0 20px 20px 20px; /* Add padding back for the items */
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.indexing-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-top: 10px; /* Changed from margin-bottom */
+  padding: 10px;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}

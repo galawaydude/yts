@@ -106,9 +106,12 @@ def get_playlist_videos(playlist_id, credentials=None):
     if not youtube:
         return []
     
-    videos = []
+    # --- START REFACTOR: BATCHING VIDEO DETAILS ---
+    
+    playlist_items_data = []
     next_page_token = None
     
+    # Step 1: Get all playlist items and their video IDs
     while True:
         request = youtube.playlistItems().list(
             part="snippet,contentDetails",
@@ -119,34 +122,55 @@ def get_playlist_videos(playlist_id, credentials=None):
         response = request.execute()
         
         for item in response.get('items', []):
-            video_id = item['contentDetails']['videoId']
-            
-            # Get video details
-            video_request = youtube.videos().list(
-                part="snippet,statistics",
-                id=video_id
-            )
-            video_response = video_request.execute()
-            
-            if video_response['items']:
-                video_info = video_response['items'][0]
-                
-                # Use the channel title from the video info, not from the playlist item
-                channel_title = video_info['snippet']['channelTitle']
-                
-                videos.append({
-                    'id': video_id,
-                    'title': item['snippet']['title'],
-                    'description': video_info['snippet'].get('description', ''),
-                    'thumbnail': item['snippet'].get('thumbnails', {}).get('default', {}).get('url', ''),
-                    'channelTitle': channel_title,  # Use the correct channel title
-                    'publishedAt': item['snippet']['publishedAt'],
-                    'viewCount': video_info['statistics'].get('viewCount', '0')
-                })
+            playlist_items_data.append({
+                'item': item,
+                'video_id': item['contentDetails']['videoId']
+            })
         
         next_page_token = response.get('nextPageToken')
         if not next_page_token:
             break
+    
+    if not playlist_items_data:
+        return [] # Playlist is empty
+
+    # Step 2: Get all video details (stats, description) in batches of 50
+    video_details_map = {}
+    video_ids = [data['video_id'] for data in playlist_items_data]
+    
+    for i in range(0, len(video_ids), 50):
+        chunk = video_ids[i:i+50]
+        
+        video_request = youtube.videos().list(
+            part="snippet,statistics",
+            id=",".join(chunk)  # Batch request for 50 videos
+        )
+        video_response = video_request.execute()
+        
+        for video_info in video_response.get('items', []):
+            video_details_map[video_info['id']] = video_info
+
+    # Step 3: Combine playlist data with video details
+    # This ensures the final data structure is identical to your original code
+    videos = []
+    for data in playlist_items_data:
+        item = data['item']
+        video_id = data['video_id']
+        video_info = video_details_map.get(video_id) # Safely get details
+        
+        # Only add video if details were found (i.e., not private/deleted)
+        if video_info:
+            videos.append({
+                'id': video_id,
+                'title': item['snippet']['title'],
+                'description': video_info['snippet'].get('description', ''),
+                'thumbnail': item['snippet'].get('thumbnails', {}).get('default', {}).get('url', ''),
+                'channelTitle': video_info['snippet']['channelTitle'],
+                'publishedAt': item['snippet']['publishedAt'],
+                'viewCount': video_info['statistics'].get('viewCount', '0')
+            })
+    
+    # --- END REFACTOR ---
     
     return videos
 
@@ -158,4 +182,4 @@ def get_video_transcript(video_id):
     except Exception as e:
         print(f"Error getting transcript for video {video_id}: {e}")
         # Return empty list instead of None to avoid errors
-        return [] 
+        return []

@@ -4,7 +4,7 @@ import { getPlaylists } from '../services/api';
 const PlaylistSelector = ({
   onSelectPlaylist,
   indexedPlaylists,
-  indexingPlaylists,
+  indexingPlaylists, // This is an array of IDs, e.g., ['PL1', 'PL2']
 }) => {
   const [playlists, setPlaylists] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,6 +35,7 @@ const PlaylistSelector = ({
     );
   };
 
+  // FIX: This function now correctly checks the array of IDs
   const isPlaylistIndexing = (playlistId) => {
     return indexingPlaylists && indexingPlaylists.includes(playlistId);
   };
@@ -59,7 +60,7 @@ const PlaylistSelector = ({
   const renderPlaylistCard = (playlist) => {
     const indexedData = getIndexedData(playlist.id);
     const isIndexed = !!indexedData;
-    const needsUpdate = indexedData && indexedData.needs_update;
+    // const needsUpdate = ... <-- THIS LINE IS REMOVED
     const isIndexing = isPlaylistIndexing(playlist.id);
 
     return (
@@ -85,11 +86,9 @@ const PlaylistSelector = ({
           ) : isIndexed ? (
             <span className="indexed-badge">Indexed</span>
           ) : null}
+
+          {/* THIS BADGE IS NOW REMOVED */}
           
-          {/* Add the new "Update Available" badge */}
-          {needsUpdate && !isIndexing && (
-            <span className="update-badge">Update Available</span>
-          )}
         </div>
       </div>
     );

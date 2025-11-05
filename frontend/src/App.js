@@ -4,18 +4,41 @@ import PlaylistSelector from './components/PlaylistSelector';
 import SearchInterface from './components/SearchInterface';
 import LoadingScreen from './components/LoadingScreen';
 import LandingPage from './components/LandingPage';
-import { indexPlaylist, logout, getIndexedPlaylists, deletePlaylistIndex, getIndexingStatus, getAuthStatus } from './services/api';
+import IndexingQueue from './components/IndexingQueue'; // Import the new component
+import {
+  indexPlaylist,
+  logout,
+  getIndexedPlaylists,
+  deletePlaylistIndex,
+  getIndexingStatus,
+  getAuthStatus,
+} from './services/api';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [selectedPlaylist, setSelectedPlaylist] = useState(null);
-  const [isIndexing, setIsIndexing] = useState(false);
-  const [indexingProgress, setIndexingProgress] = useState(null);
   const [indexedPlaylists, setIndexedPlaylists] = useState([]);
-  const [indexingPlaylists, setIndexingPlaylists] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState(null);
+
+  // NEW: This state will now hold the full status for all indexing playlists
+  // From: ['PL1', 'PL2']
+  // To:   [{id: 'PL1', status: 'in_progress', progress: 10, total: 50, title: 'My Playlist'}, ...]
+  const [indexingPlaylists, setIndexingPlaylists] = useState([]);
+
+  // REMOVED: These global state variables were causing the bugs
+  // const [isIndexing, setIsIndexing] = useState(false);
+  // const [indexingProgress, setIndexingProgress] = useState(null);
+
+  const fetchIndexedPlaylists = useCallback(async () => {
+    try {
+      const response = await getIndexedPlaylists();
+      setIndexedPlaylists(response.data.indexed_playlists || []);
+    } catch (error) {
+      console.error('Error fetching indexed playlists:', error);
+    }
+  }, []);
 
   // Check authentication status on component mount
   useEffect(() => {
@@ -33,206 +56,168 @@ function App() {
         setLoading(false);
       }
     };
-    
+
     checkAuth();
-  }, []);
+  }, [fetchIndexedPlaylists]);
 
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchIndexedPlaylists();
-    }
-  }, [isAuthenticated]);
-
-  const fetchIndexedPlaylists = async () => {
-    try {
-      const response = await getIndexedPlaylists();
-      setIndexedPlaylists(response.data.indexed_playlists || []);
-    } catch (error) {
-      console.error('Error fetching indexed playlists:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const checkIndexingStatus = useCallback(async () => {
-    if (!selectedPlaylist || !isIndexing) return;
-    
-    try {
-      const response = await getIndexingStatus(selectedPlaylist.id);
-      const status = response.data;
-      
-      if (status.status === 'completed' || status.status === 'failed') {
-        setIsIndexing(false);
-        setIndexingProgress(null);
-        
-        // Remove this playlist from the list of currently indexing playlists
-        setIndexingPlaylists(prev => prev.filter(id => id !== selectedPlaylist.id));
-        
-        // Refresh the list of indexed playlists
-        await fetchIndexedPlaylists();
-        
-        // Show notification based on indexing results
-        if (status.status === 'completed') {
-          if (status.incremental) {
-            if (status.new_videos_count > 0) {
-              setNotification({
-                type: 'success',
-                message: `Added ${status.new_videos_count} new videos to the index.`
-              });
-            } else {
-              setNotification({
-                type: 'info',
-                message: 'No new videos detected in this playlist.'
-              });
-            }
-          } else {
-            setNotification({
-              type: 'success',
-              message: `Successfully indexed ${status.success_count} videos.`
-            });
-          }
-          
-          // Clear notification after 5 seconds
-          setTimeout(() => {
-            setNotification(null);
-          }, 5000);
-        } else if (status.status === 'failed') {
-          setError(status.error || 'Indexing failed');
-        }
-      } else if (status.status === 'in_progress') {
-        setIndexingProgress({
-          current: status.progress,
-          total: status.total
-        });
-      }
-    } catch (error) {
-      console.error('Error checking indexing status:', error);
-    }
-  }, [selectedPlaylist, isIndexing, fetchIndexedPlaylists]);
-
-  useEffect(() => {
-    if (isIndexing) {
-      const interval = setInterval(checkIndexingStatus, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [isIndexing, checkIndexingStatus]);
-
-  // Check indexing status for all playlists that are being indexed
+  // This function is now the main engine, running every 3 seconds
+  // if there is anything in the indexing queue.
   const checkAllIndexingStatuses = useCallback(async () => {
     if (indexingPlaylists.length === 0) return;
+
+    let hasCompleted = false;
     
-    // Make a copy to avoid modifying the array while iterating
-    const playlistsToCheck = [...indexingPlaylists];
-    
-    for (const playlistId of playlistsToCheck) {
-      try {
-        const response = await getIndexingStatus(playlistId);
-        const status = response.data;
-        
-        if (status.status === 'completed' || status.status === 'failed') {
-          // Remove this playlist from the list of currently indexing playlists
-          setIndexingPlaylists(prev => prev.filter(id => id !== playlistId));
-          
-          // Refresh the list of indexed playlists
-          await fetchIndexedPlaylists();
+    // Create a new array based on the results of the API calls
+    const newIndexingPlaylists = await Promise.all(
+      indexingPlaylists.map(async (playlist) => {
+        try {
+          const response = await getIndexingStatus(playlist.id);
+          const status = response.data;
+
+          if (status.status === 'completed' || status.status === 'failed') {
+            hasCompleted = true; // Flag to refetch indexed list
+            
+            // Show notification
+            if (status.status === 'completed') {
+              let message = `Finished indexing ${playlist.title}.`;
+              if (status.incremental && status.new_videos_count > 0) {
+                message = `Added ${status.new_videos_count} new videos to ${playlist.title}.`;
+              } else if (status.incremental) {
+                message = `No new videos found in ${playlist.title}.`;
+              }
+              setNotification({ type: 'success', message });
+            } else {
+              setNotification({ type: 'error', message: `Failed to index ${playlist.title}: ${status.error}` });
+            }
+            
+            // Return null to filter this playlist out of the queue
+            return null;
+          } else {
+            // It's still in progress, update its status
+            return {
+              ...playlist,
+              status: status.status,
+              progress: status.progress,
+              total: status.total,
+            };
+          }
+        } catch (error) {
+          console.error(`Error checking status for ${playlist.id}:`, error);
+          // Keep it in the queue to retry
+          return playlist;
         }
-      } catch (error) {
-        console.error(`Error checking indexing status for playlist ${playlistId}:`, error);
-      }
+      })
+    );
+
+    // Filter out the null (completed/failed) items
+    setIndexingPlaylists(newIndexingPlaylists.filter(Boolean));
+
+    // If any playlist finished, refresh the main list
+    if (hasCompleted) {
+      fetchIndexedPlaylists();
     }
+    
+    // Clear notification after 5 seconds
+    setTimeout(() => {
+      setNotification(null);
+    }, 5000);
+
   }, [indexingPlaylists, fetchIndexedPlaylists]);
 
-  // Check indexing status periodically when there are playlists being indexed
+  // Setup the polling interval
   useEffect(() => {
     if (indexingPlaylists.length === 0) return;
-    
+
     const interval = setInterval(() => {
       checkAllIndexingStatuses();
     }, 3000); // Check every 3 seconds
-    
+
     return () => clearInterval(interval);
   }, [indexingPlaylists, checkAllIndexingStatuses]);
 
   const handleSelectPlaylist = (playlist) => {
     const isIndexed = indexedPlaylists.some(
-      indexed => indexed.playlist_id === playlist.id
+      (indexed) => indexed.playlist_id === playlist.id
     );
-    
+
     setSelectedPlaylist({
       ...playlist,
-      isIndexed
+      isIndexed,
     });
   };
 
   const handleDeleteIndex = async () => {
     if (!selectedPlaylist) return;
-    
-    if (window.confirm(`Are you sure you want to delete the index for "${selectedPlaylist.title}"?`)) {
+
+    if (
+      window.confirm(
+        `Are you sure you want to delete the index for "${selectedPlaylist.title}"?`
+      )
+    ) {
       try {
         setError(null);
         await deletePlaylistIndex(selectedPlaylist.id);
-        setIndexedPlaylists(prevPlaylists => 
-          prevPlaylists.filter(p => p.playlist_id !== selectedPlaylist.id)
+        
+        // Success: Remove from indexed list and go back
+        setIndexedPlaylists((prevPlaylists) =>
+          prevPlaylists.filter((p) => p.playlist_id !== selectedPlaylist.id)
         );
         setSelectedPlaylist(null);
+        setNotification({ type: 'success', message: 'Index deleted successfully.' });
+
       } catch (error) {
-        console.error('Error deleting index:', error);
-        setError('Failed to delete index');
+        // FIX: Check for 404 error
+        if (error.response && error.response.status === 404) {
+          // A 404 means it's already deleted. Treat as success.
+          setIndexedPlaylists((prevPlaylists) =>
+            prevPlaylists.filter((p) => p.playlist_id !== selectedPlaylist.id)
+          );
+          setSelectedPlaylist(null);
+          setNotification({ type: 'info', message: 'Index was already deleted.' });
+        } else {
+          // A real error (like 500)
+          console.error('Error deleting index:', error);
+          setError('Failed to delete index');
+        }
       }
     }
   };
 
   const handleIndexPlaylist = async (incremental = true, event = null) => {
-    // If an event was passed, ignore it to avoid circular JSON issues
     if (event && event.preventDefault) {
       event.preventDefault();
     }
-    
     if (!selectedPlaylist) return;
-    
-    try {
-      setError(null);
-      setIsIndexing(true);
-      
-      // Add this playlist to the list of currently indexing playlists
-      setIndexingPlaylists(prev => [...prev, selectedPlaylist.id]);
-      
-      // Only pass the playlist ID and incremental flag to avoid circular references
-      const playlistId = selectedPlaylist.id;
-      await indexPlaylist(playlistId, incremental);
-    } catch (error) {
-      console.error('Error indexing playlist:', error);
-      setError('Failed to start indexing');
-      setIsIndexing(false);
-      
-      // Remove this playlist from the list of currently indexing playlists
-      setIndexingPlaylists(prev => prev.filter(id => id !== selectedPlaylist.id));
-    }
-  };
 
-  const handleFullReindex = async (event = null) => {
-    // If an event was passed, ignore it to avoid circular JSON issues
-    if (event && event.preventDefault) {
-      event.preventDefault();
+    // Check if it's already in the queue
+    if (indexingPlaylists.some(p => p.id === selectedPlaylist.id)) {
+      setNotification({ type: 'info', message: 'Playlist is already in the indexing queue.' });
+      return;
     }
-    
+
     try {
       setError(null);
-      setIsIndexing(true);
       
-      // Add this playlist to the list of currently indexing playlists
-      setIndexingPlaylists(prev => [...prev, selectedPlaylist.id]);
+      // Call the API to start the backend job
+      await indexPlaylist(selectedPlaylist.id, incremental);
+
+      // Add this playlist to the indexing queue
+      setIndexingPlaylists((prev) => [
+        ...prev,
+        {
+          id: selectedPlaylist.id,
+          title: selectedPlaylist.title,
+          status: 'in_progress', // Or 'pending' if you change backend
+          progress: 0,
+          total: selectedPlaylist.videoCount, // Use estimate
+        },
+      ]);
       
-      // Only pass the playlist ID and incremental flag to avoid circular references
-      const playlistId = selectedPlaylist.id;
-      await indexPlaylist(playlistId, false); // false for full reindex
+      setNotification({ type: 'success', message: 'Added to indexing queue.' });
+
     } catch (error) {
-      console.error('Error reindexing playlist:', error);
-      setError('Failed to start reindexing');
-      setIsIndexing(false);
-      
-      // Remove this playlist from the list of currently indexing playlists
-      setIndexingPlaylists(prev => prev.filter(id => id !== selectedPlaylist.id));
+      console.error('Error starting indexing:', error);
+      setError('Failed to start indexing');
     }
   };
 
@@ -242,78 +227,87 @@ function App() {
       setIsAuthenticated(false);
       setSelectedPlaylist(null);
       setIndexedPlaylists([]);
-      setIndexingPlaylists([]);
+      setIndexingPlaylists([]); // Clear the queue on logout
     } catch (error) {
       console.error('Error logging out:', error);
     }
   };
 
   const handleBackToPlaylists = () => {
-    // If we're currently indexing, we want to keep that state
-    // but we need to clear the selected playlist
-    if (isIndexing) {
-      // Only clear the selected playlist, but keep isIndexing true
-      setSelectedPlaylist(null);
-    } else {
-      // Normal case - just go back to playlist selection
-      setSelectedPlaylist(null);
-    }
+    setSelectedPlaylist(null);
   };
 
   const renderContent = () => {
+    // ---- Playlist Selector Page ----
     if (!selectedPlaylist) {
       return loading ? (
         <LoadingScreen message="Loading playlists..." />
       ) : (
-        <PlaylistSelector 
-          onSelectPlaylist={handleSelectPlaylist} 
-          indexedPlaylists={indexedPlaylists}
-          indexingPlaylists={indexingPlaylists}
-        />
+        <>
+          {/* Show the new queue component */}
+          <IndexingQueue queue={indexingPlaylists} />
+          <PlaylistSelector
+            onSelectPlaylist={handleSelectPlaylist}
+            indexedPlaylists={indexedPlaylists}
+            // Pass the array of IDs
+            indexingPlaylists={indexingPlaylists.map(p => p.id)}
+          />
+        </>
       );
     }
+
+    // ---- Specific Playlist Page ----
+    
+    // FIX: Check if the *current* playlist is indexing
+    const currentPlaylistStatus = indexingPlaylists.find(
+      (p) => p.id === selectedPlaylist.id
+    );
 
     return (
       <div className="playlist-content">
         <div className="playlist-header">
           <h2>{selectedPlaylist.title}</h2>
           <div className="playlist-actions">
-            <button 
-              className="back-button"
-              onClick={handleBackToPlaylists}
-            >
+            <button className="back-button" onClick={handleBackToPlaylists}>
               Back to Playlists
             </button>
           </div>
         </div>
-        
-        {isIndexing && (
+
+        {/* FIX: Only show progress bar if the *current* playlist is indexing */}
+        {currentPlaylistStatus && (
           <div className="indexing-status">
             <div className="indexing-progress">
-              {indexingProgress 
-                ? `Indexing playlist... (${indexingProgress.current}/${indexingProgress.total})`
-                : "Preparing to index playlist..."}
+              {currentPlaylistStatus.total > 0
+                ? `Indexing playlist... (${currentPlaylistStatus.progress}/${currentPlaylistStatus.total})`
+                : 'Preparing to index playlist...'}
             </div>
           </div>
         )}
-        
-        {selectedPlaylist && indexedPlaylists.some(p => p.playlist_id === selectedPlaylist.id) ? (
-            <SearchInterface 
-                playlist={selectedPlaylist}
-                onDeleteIndex={handleDeleteIndex}
-                onReindex={handleIndexPlaylist}
-            />
+
+        {indexedPlaylists.some((p) => p.playlist_id === selectedPlaylist.id) ? (
+          // This playlist is indexed, show search
+          <SearchInterface
+            playlist={selectedPlaylist}
+            onDeleteIndex={handleDeleteIndex}
+            onReindex={handleIndexPlaylist}
+          />
         ) : (
-            <div className="index-container">
-                <p>This playlist needs to be indexed before you can search it.</p>
-                {!indexingPlaylists.includes(selectedPlaylist.id) ? (
-                    <button onClick={(e) => handleIndexPlaylist(true, e)} className="index-button">
-                        Start Indexing
-                    </button>
-                ) : (
-                    <div className="indexing-message">Indexing in progress...</div>
-                )}
-            </div>
+          // This playlist is NOT indexed, show index button
+          <div className="index-container">
+            <p>This playlist needs to be indexed before you can search it.</p>
+            {/* Show message if it's indexing, or button if it's not */}
+            {!currentPlaylistStatus ? (
+              <button
+                onClick={(e) => handleIndexPlaylist(true, e)}
+                className="index-button"
+              >
+                Start Indexing
+              </button>
+            ) : (
+              <div className="indexing-message">Indexing in progress...</div>
+            )}
+          </div>
         )}
       </div>
     );
@@ -347,7 +341,7 @@ function App() {
       {notification && (
         <div className={`notification ${notification.type}`}>
           {notification.message}
-          <button onClick={() => setNotification(null)}>Dismiss</button>
+          <button onClick={() => setNotification(null)}>X</button>
         </div>
       )}
     </div>

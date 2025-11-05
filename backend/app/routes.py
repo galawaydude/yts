@@ -1,5 +1,5 @@
 from flask import jsonify, request, session, redirect, url_for, send_file
-from app import app, es
+from app import app, es, logger # Make sure logger is imported from app
 from app.auth import get_auth_url, get_credentials, SCOPES, get_client_config
 from app.youtube import get_user_playlists, get_playlist_videos, get_video_transcript, build_youtube_client
 from app.elastic import create_index, index_video, search_videos, create_metadata_index, save_playlist_metadata, get_indexed_playlists_metadata, get_channels_for_playlist, export_playlist_data, get_indexed_video_ids
@@ -9,19 +9,32 @@ import threading
 import json
 from datetime import datetime
 import tempfile
-
-CLIENT_SECRETS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "client_secret.json")
+import traceback # Import traceback for logging
 
 # Global variables
 indexing_status = {}
 indexing_threads = {}
 
 # Add this after app initialization
-create_metadata_index()
+try:
+    create_metadata_index()
+except Exception as e:
+    logger.error(f"Failed to create metadata index on startup: {e}")
 
-def index_playlist_task(playlist_id, credentials_dict, incremental=False):
+
+def index_playlist_task(playlist_id, playlist_title, credentials_dict, incremental=False):
     """Background task to index a playlist."""
     try:
+        # Update status with title
+        indexing_status[playlist_id] = {
+            "status": "in_progress",
+            "progress": 0,
+            "total": 0,
+            "incremental": incremental,
+            "title": playlist_title,
+            "id": playlist_id
+        }
+        
         # Create credentials object from dictionary
         credentials = {
             'token': credentials_dict['token'],
@@ -35,9 +48,14 @@ def index_playlist_task(playlist_id, credentials_dict, incremental=False):
         # Get playlist videos using the credentials directly
         videos = get_playlist_videos(playlist_id, credentials)
         if not videos:
-            raise Exception("No videos found in playlist")
+            # If no videos, still mark as completed, but with 0 videos
+            logger.warning(f"No videos found in playlist {playlist_id}")
+            total_videos = 0
+            success_count = 0
+        else:
+            total_videos = len(videos)
+            success_count = 0
             
-        total_videos = len(videos)
         indexing_status[playlist_id]["total"] = total_videos
         
         # Create or get index
@@ -50,72 +68,75 @@ def index_playlist_task(playlist_id, credentials_dict, incremental=False):
         already_indexed_ids = []
         if incremental:
             already_indexed_ids = get_indexed_video_ids(index_name)
-            print(f"Found {len(already_indexed_ids)} already indexed videos")
+            logger.info(f"Found {len(already_indexed_ids)} already indexed videos")
             
             # Update status with info about incremental indexing
             indexing_status[playlist_id]["incremental"] = True
             indexing_status[playlist_id]["already_indexed"] = len(already_indexed_ids)
         
         # Index each video
-        success_count = 0
         new_videos_count = 0
         skipped_count = 0
         
-        for i, video in enumerate(videos):
-            try:
-                if indexing_status[playlist_id].get("cancelled"):
-                    raise Exception("Indexing cancelled")
-                
-                # Skip if video is already indexed and we're doing incremental indexing
-                if incremental and video['id'] in already_indexed_ids:
-                    skipped_count += 1
-                    indexing_status[playlist_id]["skipped"] = skipped_count
+        if videos: # Only loop if there are videos
+            for i, video in enumerate(videos):
+                try:
+                    if indexing_status[playlist_id].get("cancelled"):
+                        raise Exception("Indexing cancelled")
+                    
+                    # Skip if video is already indexed and we're doing incremental indexing
+                    if incremental and video['id'] in already_indexed_ids:
+                        skipped_count += 1
+                        indexing_status[playlist_id]["skipped"] = skipped_count
+                        indexing_status[playlist_id]["progress"] = i + 1
+                        continue
+                    
+                    transcript = get_video_transcript(video['id'])
+                    # Index video regardless of transcript availability
+                    if index_video(index_name, video, transcript):
+                        success_count += 1
+                        new_videos_count += 1
                     indexing_status[playlist_id]["progress"] = i + 1
+                    indexing_status[playlist_id]["new_videos"] = new_videos_count
+                except Exception as e:
+                    logger.error(f"Error indexing video {video['id']}: {e}")
                     continue
-                
-                transcript = get_video_transcript(video['id'])
-                # Index video regardless of transcript availability
-                if index_video(index_name, video, transcript):
-                    success_count += 1
-                    new_videos_count += 1
-                indexing_status[playlist_id]["progress"] = i + 1
-                indexing_status[playlist_id]["new_videos"] = new_videos_count
-            except Exception as e:
-                print(f"Error indexing video {video['id']}: {e}")
-                continue
         
         # For incremental indexing, count already indexed videos as successes
         if incremental:
             total_success = success_count + len(already_indexed_ids)
-            if success_count == 0 and len(already_indexed_ids) == 0:
-                raise Exception("No videos could be indexed")
         else:
             total_success = success_count
-            if success_count == 0:
-                raise Exception("No videos could be indexed")
         
         # Save playlist metadata
         playlist_data = {
             "id": playlist_id,
-            "title": videos[0]["channelTitle"],  # Use first video's channel as playlist title
+            "title": playlist_title,
             "videoCount": total_videos,
-            "thumbnail": videos[0].get("thumbnail", "")
+            "thumbnail": videos[0].get("thumbnail", "") if videos else ""
         }
         save_playlist_metadata(playlist_data, total_success)
         
         # Mark as complete
         indexing_status[playlist_id]["status"] = "completed"
         indexing_status[playlist_id]["success_count"] = total_success
-        if incremental:
-            indexing_status[playlist_id]["new_videos_count"] = new_videos_count
+        indexing_status[playlist_id]["new_videos_count"] = new_videos_count
         
     except Exception as e:
         error_message = str(e)
-        print(f"Error indexing playlist: {error_message}")
-        indexing_status[playlist_id] = {
-            "status": "failed",
-            "error": error_message
-        }
+        logger.error(f"Error indexing playlist {playlist_id}: {error_message}")
+        traceback.print_exc()
+        if playlist_id in indexing_status:
+            indexing_status[playlist_id]["status"] = "failed"
+            indexing_status[playlist_id]["error"] = error_message
+        else:
+            # This case might happen if error is very early
+            indexing_status[playlist_id] = {
+                "status": "failed",
+                "error": error_message,
+                "title": playlist_title,
+                "id": playlist_id
+            }
     finally:
         # Clean up thread reference
         if playlist_id in indexing_threads:
@@ -130,7 +151,9 @@ def login():
 @app.route('/api/auth/callback')
 def callback():
     """Handle OAuth callback."""
-    state = session['state']
+    state = session.get('state') # Use .get for safety
+    if not state:
+        return jsonify({"error": "No state in session"}), 400
     
     try:
         # Get client config from auth module
@@ -162,9 +185,11 @@ def callback():
         }
         
         # Redirect to the frontend URL from config
-        return redirect(app.config.get('FRONTEND_URL'))
+        frontend_url = app.config.get('FRONTEND_URL', '/')
+        return redirect(frontend_url)
     except Exception as e:
         app.logger.error(f"Error in OAuth callback: {str(e)}")
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/auth/logout')
@@ -189,7 +214,7 @@ def playlists():
     playlists = get_user_playlists()
     
     # Log the number of playlists found
-    print(f"Found {len(playlists)} playlists: {len([p for p in playlists if p.get('isOwn', False)])} owned, {len([p for p in playlists if not p.get('isOwn', False)])} saved")
+    logger.info(f"Found {len(playlists)} playlists: {len([p for p in playlists if p.get('isOwn', False)])} owned, {len([p for p in playlists if not p.get('isOwn', False)])} saved")
     
     return jsonify({"playlists": playlists})
 
@@ -213,7 +238,7 @@ def get_indexing_status():
         status["status"] = "failed"
         status["error"] = "Indexing process died unexpectedly"
     
-    print(f"Indexing status for {playlist_id}: {status}")
+    # logger.info(f"Indexing status for {playlist_id}: {status}") # This is too noisy
     return jsonify(status)
 
 @app.route('/api/playlist/<playlist_id>/index', methods=['POST'])
@@ -229,17 +254,9 @@ def index_playlist(playlist_id):
     
     try:
         # Check if this is an incremental reindex
-        incremental = request.json.get('incremental', False) if request.is_json else False
-        
-        indexing_status[playlist_id] = {
-            "status": "in_progress",
-            "progress": 0,
-            "total": 0,
-            "incremental": incremental
-        }
-        
-        # Create index with lowercase name for consistency
-        index_name = f"playlist_{playlist_id.lower()}"
+        data = request.get_json()
+        incremental = data.get('incremental', False)
+        playlist_title = data.get('title', playlist_id) # Get title from request
         
         # Get credentials as dictionary
         credentials_dict = {
@@ -254,7 +271,7 @@ def index_playlist(playlist_id):
         # Start indexing in background thread
         thread = threading.Thread(
             target=index_playlist_task,
-            args=(playlist_id, credentials_dict, incremental)
+            args=(playlist_id, playlist_title, credentials_dict, incremental)
         )
         indexing_threads[playlist_id] = thread
         thread.start()
@@ -266,7 +283,8 @@ def index_playlist(playlist_id):
         
     except Exception as e:
         error_message = str(e)
-        print(f"Error starting indexing: {error_message}")
+        logger.error(f"Error starting indexing: {error_message}")
+        traceback.print_exc()
         return jsonify({"error": error_message}), 500
 
 @app.route('/api/playlist/<playlist_id>/search')
@@ -299,13 +317,13 @@ def search_playlist(playlist_id):
         return jsonify(results)
         
     except Exception as e:
-        print(f"Search error: {e}")
-        import traceback
+        logger.error(f"Search error: {e}")
         traceback.print_exc()
         return jsonify({
             'total': 0,
-            'results': []
-        })
+            'results': [],
+            'error': str(e)
+        }), 500
 
 @app.route('/api/playlist/<playlist_id>/channels')
 def get_playlist_channels(playlist_id):
@@ -325,7 +343,7 @@ def get_playlist_channels(playlist_id):
         })
         
     except Exception as e:
-        print(f"Error getting channels: {e}")
+        logger.error(f"Error getting channels: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/playlist/<playlist_id>/delete-index', methods=['DELETE'])
@@ -346,6 +364,7 @@ def delete_playlist_index(playlist_id):
         es.delete(
             index="yts_metadata",
             id=playlist_id,
+            refresh=True,
             ignore=[404]
         )
         
@@ -354,44 +373,29 @@ def delete_playlist_index(playlist_id):
             "message": "Index and metadata deleted successfully"
         })
     except Exception as e:
+        logger.error(f"Error deleting index: {e}")
         return jsonify({"error": str(e)}), 500
 
+# ===================================================================
+# ===== THIS IS THE MODIFIED FUNCTION =====
+# ===================================================================
 @app.route('/api/indexed-playlists')
 def get_indexed_playlists():
     """Get a list of all indexed playlists with metadata."""
     try:
+        # 1. Get the metadata from our local database (Elasticsearch)
         indexed_playlists = get_indexed_playlists_metadata()
         
-        # For each indexed playlist, check if it needs updating
-        for playlist in indexed_playlists:
-            try:
-                # Get current video count from YouTube API
-                credentials = get_credentials()
-                if credentials:
-                    youtube = build_youtube_client(credentials)
-                    request = youtube.playlists().list(
-                        part="snippet,contentDetails",
-                        id=playlist['playlist_id']
-                    )
-                    response = request.execute()
-                    
-                    if response['items']:
-                        current_count = response['items'][0]['contentDetails']['itemCount']
-                        indexed_count = playlist.get('video_count', 0)
-                        
-                        # Add update status to the playlist metadata
-                        playlist['needs_update'] = current_count > indexed_count
-                        playlist['current_video_count'] = current_count
-                        playlist['behind_by'] = max(0, current_count - indexed_count)
-            except Exception as e:
-                print(f"Error checking update status for playlist {playlist['playlist_id']}: {e}")
-                # Don't fail the whole request if one playlist check fails
-                playlist['needs_update'] = False
-                
+        # 2. Return it directly. 
+        # The expensive for loop that called the YouTube API is now GONE.
         return jsonify({"indexed_playlists": indexed_playlists})
+    
     except Exception as e:
-        print(f"Error getting indexed playlists: {e}")
+        logger.error(f"Error getting indexed playlists: {e}")
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+# ===================================================================
+# ===================================================================
 
 @app.route('/api/playlist/<playlist_id>/export', methods=['GET'])
 def export_playlist(playlist_id):
@@ -410,7 +414,7 @@ def export_playlist(playlist_id):
             return jsonify(data), 404
             
         # Create a temporary file
-        with tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.json') as temp_file:
+        with tempfile.NamedTemporaryFile(delete=False, mode='w', suffix='.json', encoding='utf-8') as temp_file:
             json.dump(data, temp_file, indent=2)
             temp_path = temp_file.name
             
@@ -424,8 +428,13 @@ def export_playlist(playlist_id):
         
     except Exception as e:
         error_message = str(e)
-        print(f"Error in export_playlist endpoint: {error_message}")
+        logger.error(f"Error in export_playlist endpoint: {error_message}")
+        traceback.print_exc()
         return jsonify({"error": error_message}), 500
+    finally:
+        # Clean up the temporary file
+        if 'temp_path' in locals() and os.path.exists(temp_path):
+            os.remove(temp_path)
 
 @app.route('/api/debug/index/<index_name>')
 def debug_index(index_name):
@@ -456,6 +465,3 @@ def debug_index(index_name):
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-if __name__ == '__main__':
-    app.run(debug=True)
