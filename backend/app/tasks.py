@@ -3,13 +3,12 @@ from app import celery, es, logger
 from app.youtube import get_playlist_videos, get_video_transcript
 from app.elastic import create_index, index_video, save_playlist_metadata, get_indexed_video_ids
 import traceback
+from datetime import datetime # <-- NEW IMPORT
 
-# This is the new decorator that turns our function into a Celery task
 @celery.task(bind=True)
 def index_playlist_task(self, playlist_id, playlist_title, credentials_dict, incremental=False):
     """Background task to index a playlist."""
     
-    # This is the 'meta' object our frontend will read
     status_meta = {
         "status": "in_progress",
         "progress": 0,
@@ -23,7 +22,6 @@ def index_playlist_task(self, playlist_id, playlist_title, credentials_dict, inc
     }
     
     try:
-        # Update the task state so the frontend knows we've started
         self.update_state(state='PROGRESS', meta=status_meta)
         
         credentials = {
@@ -62,7 +60,6 @@ def index_playlist_task(self, playlist_id, playlist_title, credentials_dict, inc
         
         if videos:
             for i, video in enumerate(videos):
-                # We don't need a 'cancelled' check anymore, Celery handles this
                 
                 if incremental and video['id'] in already_indexed_ids:
                     skipped_count += 1
@@ -73,13 +70,13 @@ def index_playlist_task(self, playlist_id, playlist_title, credentials_dict, inc
                         if index_video(index_name, video, transcript):
                             success_count += 1
                             new_videos_count += 1
-                        status_meta["new_videos"] = new_videos_count
+                        status_meta["new_videos_count"] = new_videos_count
                     except Exception as e:
                         logger.error(f"Error indexing video {video['id']}: {e}")
                         continue
                 
-                # Update progress for every video
                 status_meta["progress"] = i + 1
+                # Update progress on every video
                 self.update_state(state='PROGRESS', meta=status_meta)
         
         if incremental:
@@ -100,6 +97,19 @@ def index_playlist_task(self, playlist_id, playlist_title, credentials_dict, inc
         status_meta["success_count"] = total_success
         status_meta["new_videos_count"] = new_videos_count
         
+        # --- THIS IS THE FIX ---
+        # Create the final metadata object that the frontend needs,
+        # matching the format from 'get_indexed_playlists_metadata'.
+        status_meta["indexed_data"] = {
+            "playlist_id": playlist_id,
+            "title": playlist_title,
+            "thumbnail": playlist_data["thumbnail"],
+            "video_count": total_videos,
+            "indexed_videos": total_success,
+            "last_indexed": datetime.utcnow().isoformat()
+        }
+        # -----------------------
+        
         # Return the final status, which Celery stores
         return status_meta
         
@@ -108,10 +118,8 @@ def index_playlist_task(self, playlist_id, playlist_title, credentials_dict, inc
         logger.error(f"Error indexing playlist {playlist_id}: {error_message}")
         traceback.print_exc()
         
-        # On failure, update state with the error
         status_meta["status"] = "failed"
         status_meta["error"] = error_message
         self.update_state(state='FAILURE', meta=status_meta)
         
-        # Re-raise the exception so Celery marks it as failed
         raise e

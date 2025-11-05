@@ -41,12 +41,15 @@ export const logout = () => api.get('/auth/logout');
 
 export const getPlaylists = () => api.get('/playlists');
 export const getIndexedPlaylists = () => api.get('/indexed-playlists');
-export const indexPlaylist = (playlistId, incremental = false) => {
-  // Make sure we're only sending a simple object with the incremental flag
-  return api.post(`/playlist/${playlistId}/index`, { incremental });
+
+// --- THESE ARE THE POLLING FUNCTIONS ---
+export const indexPlaylist = (playlistId, title, incremental = false) => {
+  return api.post(`/playlist/${playlistId}/index`, { incremental, title });
 };
-export const deletePlaylistIndex = (playlistId) => api.delete(`/playlist/${playlistId}/delete-index`);
 export const getIndexingStatus = (playlistId) => api.get(`/indexing-status?playlist_id=${playlistId}`);
+// ------------------------------------
+
+export const deletePlaylistIndex = (playlistId) => api.delete(`/playlist/${playlistId}/delete-index`);
 export const getPlaylistChannels = (playlistId) => api.get(`/playlist/${playlistId}/channels`);
 
 export const searchPlaylist = (playlistId, query, searchIn = ['title', 'description', 'transcript'], page = 1, size = 10, channels = []) => {
