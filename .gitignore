@@ -1,0 +1,60 @@
+# --- Secrets ---
+# Ignore all .env files in any directory
+**/.env
+*.env.local
+
+# But DO NOT ignore example files
+!*.env.example
+
+# --- GCP/Elasticsearch Secrets ---
+# IGNORE ALL JSON KEY FILES!
+# If you have your 'youtubetranscriptsearch-*.json' file in here, it will be ignored.
+*.json
+
+# BUT, we must allow package.json and other non-secret JSON files
+!package.json
+!package-lock.json
+!frontend/package.json
+!frontend/package-lock.json
+
+
+# --- Python / Backend ---
+# Virtual Environment
+backend/venv/
+
+# Python Bytecode
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Celery temporary files
+celerybeat-schedule
+
+# Log files
+*.log
+
+
+# --- JavaScript / Frontend ---
+# Dependencies
+frontend/node_modules/
+
+# Production Build output
+frontend/build/
+
+# Logs
+npm-debug.log*
+yarn-error.log
+
+
+# --- Editor: VS Code ---
+# Ignore user-specific workspace settings and temp files
+.vscode/
+
+
+# --- OS-specific ---
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
