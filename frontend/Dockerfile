@@ -13,5 +13,5 @@ ENV REACT_APP_API_URL=$REACT_APP_API_URL
 RUN npm run build
 
 # --- Stage 2: An empty container to hold the build files ---
-FROM alpine:latest  # <-- THIS IS THE FIX
+FROM alpine:latest
 COPY --from=build /app/build /usr/share/nginx/html
