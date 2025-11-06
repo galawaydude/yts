@@ -20,49 +20,34 @@ const LandingPage = () => {
         </div>
         <h1 className="landing-title">YouTube Playlist Search</h1>
         <p className="landing-description">
-          Index your YouTube playlists and search video titles, descriptions,
-          and full transcripts in seconds.
+          Index and search your YouTube playlists with advanced search capabilities.
+          Find any video by content, transcript, or description in seconds.
         </p>
-        <button className="google-login-button" onClick={handleLogin}>
-          <i className="fab fa-google"></i> Login with Google
-        </button>
-
-        <h2 className="search-how-to-title">Powerful Search Capabilities</h2>
         <div className="features-grid">
           <div className="feature-item">
             <i className="fas fa-search"></i>
-            <h3>Keyword Search</h3>
-            <p>
-              Find videos containing all your words. A search for
-              <code>python api</code> finds videos with both "python" AND "api".
-            </p>
+            <h3>Full-Text Search</h3>
+            <p>Search across video titles, descriptions, and transcripts</p>
           </div>
           <div className="feature-item">
-            <i className="fas fa-quote-right"></i>
-            <h3>Phrase Search</h3>
-            <p>
-              Wrap your search in quotes to find an exact phrase, like
-              <code>"django rest framework"</code>.
-            </p>
-          </div>
-          <div className="feature-item">
-            <i className="fas fa-project-diagram"></i>
-            <h3>Boolean Search</h3>
-            <p>
-              Use operators like <code>OR</code>, <code>AND</code>, and
-              <code>NOT</code> for complex queries, e.g.,
-              <code>(flask OR django) NOT api</code>.
-            </p>
+            <i className="fas fa-list"></i>
+            <p>Index your playlists for lightning-fast search results</p>
+            <h3>Playlist Indexing</h3>
           </div>
           <div className="feature-item">
             <i className="fas fa-filter"></i>
-            <h3>Filter Results</h3>
-            <p>
-              Narrow your search to specific fields (title, transcript) and
-              filter by channel to find what you need.
-            </p>
+            <h3>Advanced Filtering</h3>
+            <p>Filter results by channel, date, and more</p>
+          </div>
+          <div className="feature-item">
+            <i className="fas fa-download"></i>
+            <h3>Export Data</h3>
+            <p>Export your playlist data in JSON format</p>
           </div>
         </div>
+        <button className="google-login-button" onClick={handleLogin}>
+          <i className="fab fa-google"></i> Login with Google
+        </button>
       </div>
     </div>
   );
