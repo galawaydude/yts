@@ -1,6 +1,7 @@
 from elasticsearch import Elasticsearch
 import json
 from datetime import datetime
+import traceback
 
 from app import es
 
@@ -130,146 +131,82 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
         if not search_in:
             search_in = ['title', 'description', 'transcript']
             
-        print(f"Search request: index={index_name}, query='{query}', fields={search_in}")
+        print(f"Boolean search request: index={index_name}, query='{query}', fields={search_in}")
         
-        # Check if this is a phrase query (enclosed in quotes)
-        is_phrase_query = False
-        if query.startswith('"') and query.endswith('"'):
-            is_phrase_query = True
-            query = query[1:-1]  # Remove the quotes
-            print(f"Detected phrase query: '{query}'")
+        # ==========================================================
+        # =================== BOOLEAN SEARCH FIX ===================
+        # ==========================================================
+        # This new logic replaces the old match/match_phrase logic
+        # with a single, more powerful query_string query.
 
-        # Build the base query
-        if is_phrase_query:
-            base_query = {
-                "bool": {
-                    "should": []
+        # This will hold the "should" clauses for our main query
+        main_should_clauses = []
+        
+        # --- 1. Handle Title and Description fields ---
+        top_level_fields = []
+        if 'title' in search_in:
+            top_level_fields.append("title^3") # Boost title
+        if 'description' in search_in:
+            top_level_fields.append("description^2") # Boost description
+            
+        if top_level_fields:
+            main_should_clauses.append({
+                "query_string": {
+                    "query": query,
+                    "fields": top_level_fields,
+                    "default_operator": "AND" # Keep AND as default for simple queries
                 }
-            }
+            })
             
-            # Add phrase matches for title and description
-            if 'title' in search_in:
-                base_query["bool"]["should"].append({
-                    "match_phrase": {
-                        "title": {
+        # --- 2. Handle Transcript field (nested) ---
+        if 'transcript' in search_in:
+            main_should_clauses.append({
+                "nested": {
+                    "path": "transcript_segments",
+                    "query": {
+                        # Use query_string inside the nested query
+                        "query_string": {
                             "query": query,
-                            "boost": 3
+                            "fields": ["transcript_segments.text"],
+                            "default_operator": "AND"
                         }
-                    }
-                })
-            
-            if 'description' in search_in:
-                base_query["bool"]["should"].append({
-                    "match_phrase": {
-                        "description": {
-                            "query": query,
-                            "boost": 2
-                        }
-                    }
-                })
-            
-            # Add nested query for transcripts if needed
-            if 'transcript' in search_in:
-                base_query["bool"]["should"].append({
-                    "nested": {
-                        "path": "transcript_segments",
-                        "query": {
-                            "match_phrase": {
-                                "transcript_segments.text": query
-                            }
-                        },
-                        "inner_hits": {
-                            "highlight": {
-                                "fields": {
-                                    "transcript_segments.text": {}
-                                }
+                    },
+                    "inner_hits": {
+                        "highlight": {
+                            "fields": {
+                                "transcript_segments.text": {}
                             }
                         }
                     }
-                })
-            
-            base_query["bool"]["minimum_should_match"] = 1
-            main_query = base_query
-            
-        else:
-            # For regular queries, use match with AND operator
-            base_query = {
-                "bool": {
-                    "should": []
                 }
+            })
+
+        if not main_should_clauses:
+            return {'results': [], 'total': 0, 'channels': [], 'error': 'No fields selected for search'}
+
+        # --- 3. Build the main query ---
+        main_query = {
+            "bool": {
+                "should": main_should_clauses,
+                "minimum_should_match": 1 # At least one of the clauses must match
             }
-            
-            # Add regular matches for title and description
-            if 'title' in search_in:
-                base_query["bool"]["should"].append({
-                    "match": {
-                        "title": {
-                            "query": query,
-                            "operator": "and",
-                            "boost": 3
-                        }
-                    }
-                })
-            
-            if 'description' in search_in:
-                base_query["bool"]["should"].append({
-                    "match": {
-                        "description": {
-                            "query": query,
-                            "operator": "and",
-                            "boost": 2
-                        }
-                    }
-                })
-            
-            # Add nested query for transcripts if needed
-            if 'transcript' in search_in:
-                base_query["bool"]["should"].append({
-                    "nested": {
-                        "path": "transcript_segments",
-                        "query": {
-                            "match": {
-                                "transcript_segments.text": {
-                                    "query": query,
-                                    "operator": "and"
-                                }
-                            }
-                        },
-                        "inner_hits": {
-                            "highlight": {
-                                "fields": {
-                                    "transcript_segments.text": {}
-                                }
-                            }
-                        }
-                    }
-                })
-            
-            base_query["bool"]["minimum_should_match"] = 1
-            main_query = base_query
+        }
+        
+        # ==========================================================
+        # ================== END OF BOOLEAN FIX ====================
+        # ==========================================================
 
         # Add channel filter if specified
         if channel_filter:
-            filter_query = {
+            # We must use 'filter' for the channel and 'must' for the query
+            final_query = {
                 "bool": {
-                    "must": [main_query]
+                    "must": [main_query],
+                    "filter": {
+                        "terms": {"channel": channel_filter}
+                    }
                 }
             }
-            
-            if isinstance(channel_filter, list):
-                filter_query["bool"]["filter"] = {
-                    "terms": {
-                        "channel": channel_filter
-                    }
-                }
-            else:
-                filter_query["bool"]["filter"] = {
-                    "term": {
-                        "channel": channel_filter
-                    }
-                }
-            
-            final_query = filter_query
         else:
             final_query = main_query
 
@@ -393,7 +330,6 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
         }
         
     except Exception as e:
-        import traceback
         print(f"Error in search_videos: {str(e)}")
         print(traceback.format_exc())
         return {

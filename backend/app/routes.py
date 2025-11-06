@@ -171,14 +171,23 @@ def index_playlist(playlist_id):
         incremental = data.get('incremental', False)
         playlist_title = data.get('title', playlist_id)
         
+        # ==========================================================
+        # ==================== SECURITY FIX HERE ===================
+        # ==========================================================
+        # We ONLY pass user-specific tokens.
+        # The app's client_id and client_secret are loaded
+        # from config *inside* the task.
         credentials_dict = {
             'token': credentials.token,
             'refresh_token': credentials.refresh_token,
             'token_uri': credentials.token_uri,
-            'client_id': credentials.client_id,
-            'client_secret': credentials.client_secret,
+            # 'client_id': credentials.client_id,       <-- REMOVED
+            # 'client_secret': credentials.client_secret, <-- REMOVED
             'scopes': credentials.scopes
         }
+        # ==========================================================
+        # ================== END OF SECURITY FIX ===================
+        # ==========================================================
         
         # Start the task
         task = index_playlist_task.delay(

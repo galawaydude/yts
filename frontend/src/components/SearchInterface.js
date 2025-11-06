@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { searchPlaylist, exportPlaylistData, getIndexingStatus } from '../services/api';
+import React, { useState } from 'react';
+import { searchPlaylist, exportPlaylistData } from '../services/api';
 import VideoResults from './VideoResults';
 import LoadingScreen from './LoadingScreen';
 
-const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
+const SearchInterface = ({ playlist, onDeleteIndex, onReindex, isIndexing }) => {
   const [query, setQuery] = useState('');
   const [searchFields, setSearchFields] = useState({
     title: true,
@@ -20,25 +20,11 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
   const [channelsInResults, setChannelsInResults] = useState([]);
   const [showChannelFilter, setShowChannelFilter] = useState(false);
   const [pendingChannelSearch, setPendingChannelSearch] = useState(false);
-  const [isIndexing, setIsIndexing] = useState(false);
   const resultsPerPage = 10;
   const [pageInput, setPageInput] = useState('');
 
-  // Check if the playlist is currently being indexed
-  useEffect(() => {
-    const checkIndexingStatus = async () => {
-      try {
-        const response = await getIndexingStatus(playlist.id);
-        setIsIndexing(response.data.status === 'in_progress');
-      } catch (error) {
-        console.error('Error checking indexing status:', error);
-      }
-    };
-
-    checkIndexingStatus();
-    const interval = setInterval(checkIndexingStatus, 5000);
-    return () => clearInterval(interval);
-  }, [playlist.id]);
+  // The 'isIndexing' state and 'useEffect' polling hook have been REMOVED.
+  // The 'isIndexing' prop is now used directly.
 
   const handleSearch = async (e, page = 1, channelFilters = selectedChannels) => {
     if (e) e.preventDefault();
@@ -86,7 +72,7 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
     setSelectedChannels(prev => {
       const newChannels = prev.includes(channelName)
         ? prev.filter(c => c !== channelName) // Remove channel if already selected
-        : [...prev, channelName];             // Add channel if not selected
+        : [...prev, channelName];         // Add channel if not selected
       
       // Set flag that we have pending channel changes
       setPendingChannelSearch(true);
@@ -212,7 +198,7 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex }) => {
           <div className="results-count-container">
             <p className="results-count">
               {totalResults === 0 ? 'No results found' : 
-               `Found ${totalResults} video${totalResults === 1 ? '' : 's'}`}
+                `Found ${totalResults} video${totalResults === 1 ? '' : 's'}`}
             </p>
           </div>
 

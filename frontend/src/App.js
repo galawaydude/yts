@@ -89,6 +89,7 @@ function App() {
             // It's still in progress, update its status
             return {
               ...playlist,
+      
               status: status.status,
               progress: status.progress,
               total: status.total,
@@ -282,6 +283,7 @@ function App() {
             playlist={selectedPlaylist}
             onDeleteIndex={handleDeleteIndex}
             onReindex={handleIndexPlaylist}
+            isIndexing={!!currentPlaylistStatus} // <-- THIS IS THE ONLY CHANGE
           />
         ) : (
           <div className="index-container">
