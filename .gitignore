@@ -6,6 +6,9 @@
 .env.production
 backend/.env.production
 
+backend/app.yaml
+backend/worker.yaml
+
 # But DO NOT ignore example files
 !*.env.example
 
