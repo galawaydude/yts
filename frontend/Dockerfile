@@ -13,6 +13,5 @@ ENV REACT_APP_API_URL=$REACT_APP_API_URL
 RUN npm run build
 
 # --- Stage 2: An empty container to hold the build files ---
-# This is a clean way to pass the files to our Nginx router
-FROM scratch
+FROM alpine:latest  # <-- THIS IS THE FIX
 COPY --from=build /app/build /usr/share/nginx/html

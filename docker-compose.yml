@@ -36,11 +36,12 @@ services:
     build:
       context: ./frontend
       args:
-        # This ARG is a variable we will pass in
-        - REACT_APP_API_URL=http://[YOUR-SERVER-IP]/api
+        # --- FILLED IN YOUR IP HERE ---
+        - REACT_APP_API_URL=http://34.131.222.236/api
     container_name: yts-frontend-builder
     volumes:
       - react_build:/usr/share/nginx/html
+    command: ["/bin/true"] # This container just builds and exits
 
   # 5. The Nginx Router (the main web server)
   web:
@@ -49,8 +50,10 @@ services:
     ports:
       - "80:80" # Map your server's Port 80 to this container's Port 80
     volumes:
+      # This copies our custom config file into the container
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
-      - react_build:/usr/share/nginx/html # Use the files from the frontend
+      # This volume links the React build from the frontend service
+      - react_build:/usr/share/nginx/html
     restart: always
     depends_on:
       - backend
