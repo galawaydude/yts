@@ -52,7 +52,8 @@ def index_playlist_task(self, playlist_id, playlist_title, credentials_dict, inc
         "id": playlist_id,
         "new_videos_count": 0,
         "skipped": 0,
-        "already_indexed": 0
+        "already_indexed": 0,
+        "group_id": None # <-- ADDED THIS
     }
     
     try:
@@ -129,6 +130,13 @@ def index_playlist_task(self, playlist_id, playlist_title, credentials_dict, inc
             # Run the group
             result_group = job_group.apply_async()
             
+            # ==================================================
+            # === CANCELLATION FEATURE: SAVE GROUP ID ========
+            # ==================================================
+            status_meta["group_id"] = result_group.id
+            self.update_state(state='PROGRESS', meta=status_meta)
+            # ==================================================
+
             # Wait for the group to finish, updating progress as we go
             # This keeps your frontend polling logic working perfectly.
             while not result_group.ready():

@@ -47,7 +47,10 @@ export const indexPlaylist = (playlistId, title, incremental = false) => {
   return api.post(`/playlist/${playlistId}/index`, { incremental, title });
 };
 export const getIndexingStatus = (playlistId) => api.get(`/indexing-status?playlist_id=${playlistId}`);
-// ------------------------------------
+
+// === CANCELLATION FEATURE: NEW FUNCTION ===
+export const cancelIndexing = (playlistId) => api.post(`/playlist/${playlistId}/cancel-index`);
+// ==========================================
 
 export const deletePlaylistIndex = (playlistId) => api.delete(`/playlist/${playlistId}/delete-index`);
 export const getPlaylistChannels = (playlistId) => api.get(`/playlist/${playlistId}/channels`);

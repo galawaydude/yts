@@ -4,7 +4,7 @@ from app.auth import get_auth_url, get_credentials, SCOPES, get_client_config
 from app.youtube import get_user_playlists, build_youtube_client
 from app.elastic import search_videos, create_metadata_index, get_indexed_playlists_metadata, get_channels_for_playlist, export_playlist_data
 from app.tasks import index_playlist_task
-from celery.result import AsyncResult
+from celery.result import AsyncResult, GroupResult # <-- IMPORT GROUPRESULT
 import os
 from google_auth_oauthlib.flow import Flow
 import json
@@ -211,6 +211,64 @@ def index_playlist(playlist_id):
         logger.error(f"Error starting indexing: {error_message}")
         traceback.print_exc()
         return jsonify({"error": error_message}), 500
+
+# ==================================================
+# === CANCELLATION FEATURE: NEW ENDPOINT =========
+# ==================================================
+@app.route('/api/playlist/<playlist_id>/cancel-index', methods=['POST'])
+def cancel_indexing(playlist_id):
+    """Cancel a running indexing task."""
+    if not get_credentials():
+        return jsonify({"error": "Not authenticated"}), 401
+    
+    if redis_conn is None:
+        return jsonify({"error": "Task server is disconnected"}), 503
+
+    task_id_key = f"{TASK_KEY_PREFIX}{playlist_id}"
+    task_id = redis_conn.get(task_id_key)
+    
+    if not task_id:
+        return jsonify({"error": "No running task found for this playlist"}), 404
+        
+    try:
+        # Get the task result object
+        result = AsyncResult(task_id, app=celery)
+        
+        if result.state not in ['PENDING', 'PROGRESS']:
+            return jsonify({"error": "Task is not in a cancellable state"}), 400
+
+        # Find the group_id from the task's metadata
+        group_id = None
+        if result.info and isinstance(result.info, dict):
+            group_id = result.info.get("group_id")
+
+        # 1. Revoke the main "manager" task
+        logger.info(f"Revoking main task: {task_id}")
+        celery.control.revoke(task_id, terminate=True, signal='SIGTERM') # <-- 'persistent' removed
+        
+        # 2. Revoke all the "child" tasks in the group
+        if group_id:
+            logger.info(f"Revoking task group: {group_id}")
+            group_result = GroupResult.restore(group_id, app=celery)
+            if group_result:
+                group_result.revoke(terminate=True, signal='SIGTERM') # <-- 'persistent' removed
+            
+        # 3. Clean up the Redis key so a new task can be started
+        redis_conn.delete(task_id_key)
+        
+        # --- THIS IS THE LINE YOU REQUESTED ---
+        logger.info(f"Indexing cancelled for playlist {playlist_id}")
+        # -------------------------------------
+        
+        return jsonify({"success": True, "message": "Indexing task cancelled"})
+
+    except Exception as e:
+        logger.error(f"Error cancelling task: {e}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+# ==================================================
+# === END OF CANCELLATION FEATURE ==================
+# ==================================================
 
 @app.route('/api/playlist/<playlist_id>/search')
 def search_playlist(playlist_id):

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-const IndexingQueue = ({ queue }) => {
+const IndexingQueue = ({ queue, onCancel }) => { // <-- ACCEPT onCancel
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   if (queue.length === 0) {
@@ -60,6 +60,18 @@ const IndexingQueue = ({ queue }) => {
                   ? `(${playlist.progress}/${playlist.total})`
                   : 'Starting...'}
               </span>
+              {/* === CANCELLATION FEATURE: NEW BUTTON === */}
+              <button
+                className="queue-item-cancel"
+                title="Cancel Indexing"
+                onClick={(e) => {
+                  e.stopPropagation(); // Stop click from collapsing
+                  onCancel(playlist.id, playlist.title);
+                }}
+              >
+                &times;
+              </button>
+              {/* ========================================= */}
             </div>
           ))}
         </div>

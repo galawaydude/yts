@@ -12,6 +12,7 @@ import {
   deletePlaylistIndex,
   getIndexingStatus,
   getAuthStatus,
+  cancelIndexing, // <-- IMPORT NEW FUNCTION
 } from './services/api';
 
 function App() {
@@ -85,11 +86,13 @@ function App() {
             }
             
             return null; // Filter this playlist out
+          } else if (status.status === 'not_started') {
+            // This can happen if the task was cancelled on the backend
+            return null;
           } else {
             // It's still in progress, update its status
             return {
               ...playlist,
-      
               status: status.status,
               progress: status.progress,
               total: status.total,
@@ -191,7 +194,7 @@ function App() {
     if (!selectedPlaylist) return;
 
     if (indexingPlaylists.some(p => p.id === selectedPlaylist.id)) {
-      setNotification({ type: 'info', message: 'Playlist is already in the indexing queue.' });
+      setNotification({ type: 'info', message: 'Playlist is in the indexing queue.' });
       return;
     }
 
@@ -221,6 +224,22 @@ function App() {
     }
   };
 
+  const handleCancelIndexing = async (playlistId, playlistTitle) => {
+    if (!window.confirm(`Are you sure you want to cancel indexing "${playlistTitle}"?`)) {
+      return;
+    }
+    
+    try {
+      await cancelIndexing(playlistId);
+      setNotification({ type: 'success', message: 'Indexing cancelled.' });
+      // Remove it from the queue
+      setIndexingPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
+    } catch (error) {
+      console.error('Error cancelling indexing:', error);
+      setError('Failed to cancel indexing task.');
+    }
+  };
+
   const handleLogout = async () => {
     try {
       await logout();
@@ -243,7 +262,10 @@ function App() {
         <LoadingScreen message="Loading playlists..." />
       ) : (
         <>
-          <IndexingQueue queue={indexingPlaylists} />
+          <IndexingQueue
+            queue={indexingPlaylists}
+            onCancel={handleCancelIndexing} // <-- PASS HANDLER
+          />
           <PlaylistSelector
             onSelectPlaylist={handleSelectPlaylist}
             indexedPlaylists={indexedPlaylists}
@@ -257,6 +279,27 @@ function App() {
       (p) => p.id === selectedPlaylist.id
     );
 
+    // ==========================================================
+    // === THIS IS THE FIX: Create a reusable status bar ========
+    // ==========================================================
+    const statusBar = currentPlaylistStatus ? (
+      <div className="indexing-status">
+        <div className="indexing-progress">
+          {currentPlaylistStatus.total > 0
+            ? `Indexing playlist... (${currentPlaylistStatus.progress}/${currentPlaylistStatus.total})`
+            : 'Preparing to index playlist...'}
+        </div>
+        <button
+          className="cancel-indexing-button"
+          onClick={() => handleCancelIndexing(currentPlaylistStatus.id, currentPlaylistStatus.title)}
+          style={{ marginLeft: '15px' }} // <-- STYLING FIX
+        >
+          Cancel
+        </button>
+      </div>
+    ) : null;
+    // ==========================================================
+
     return (
       <div className="playlist-content">
         <div className="playlist-header">
@@ -268,26 +311,27 @@ function App() {
           </div>
         </div>
 
-        {currentPlaylistStatus && (
-          <div className="indexing-status">
-            <div className="indexing-progress">
-              {currentPlaylistStatus.total > 0
-                ? `Indexing playlist... (${currentPlaylistStatus.progress}/${currentPlaylistStatus.total})`
-                : 'Preparing to index playlist...'}
-            </div>
-          </div>
-        )}
+        {/* The old, badly-placed status bar has been removed from here */}
 
         {indexedPlaylists.some((p) => p.playlist_id === selectedPlaylist.id) ? (
-          <SearchInterface
-            playlist={selectedPlaylist}
-            onDeleteIndex={handleDeleteIndex}
-            onReindex={handleIndexPlaylist}
-            isIndexing={!!currentPlaylistStatus} // <-- THIS IS THE ONLY CHANGE
-          />
+          // --- If playlist IS indexed ---
+          <>
+            {statusBar} {/* Show status bar on top of search */}
+            <SearchInterface
+              playlist={selectedPlaylist}
+              onDeleteIndex={handleDeleteIndex}
+              onReindex={handleIndexPlaylist}
+              isIndexing={!!currentPlaylistStatus}
+            />
+          </>
         ) : (
+          // --- If playlist is NOT indexed ---
           <div className="index-container">
             <p>This playlist needs to be indexed before you can search it.</p>
+            
+            {/* This now shows EITHER the "Start" button OR the status bar.
+              This is much cleaner.
+            */}
             {!currentPlaylistStatus ? (
               <button
                 onClick={(e) => handleIndexPlaylist(true, e)}
@@ -296,7 +340,7 @@ function App() {
                 Start Indexing
               </button>
             ) : (
-              <div className="indexing-message">Indexing in progress...</div>
+              statusBar // <-- Use the new status bar here
             )}
           </div>
         )}
