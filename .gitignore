@@ -2,6 +2,9 @@
 # Ignore all .env files in any directory
 **/.env
 *.env.local
+# Ignore production environment files
+.env.production
+backend/.env.production
 
 # But DO NOT ignore example files
 !*.env.example
