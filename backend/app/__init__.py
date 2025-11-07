@@ -10,45 +10,30 @@ from config import Config
 from celery import Celery
 from celery.signals import after_setup_logger
 import redis
-from flask_session import Session # <-- Make sure this import is here
+from flask_session import Session # <-- NEW IMPORT
 
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# ==========================================================
-# ==================== THE STABLE FIX ======================
-# ==========================================================
+# --- NEW: INITIALIZE SESSION ---
+# This will read the config from Config (SESSION_TYPE, SESSION_REDIS)
+Session(app)
+# -------------------------------
 
-# 1. Create ONE Redis connection, correctly configured.
-#    This will be used for BOTH Sessions and Celery.
+# This is your existing Redis connection for task tracking (Celery)
+# This one IS decoded, which is correct for your tasks.
 try:
     redis_conn = redis.from_url(
         app.config['CELERY_BROKER_URL'],
-        decode_responses=True # <-- THIS IS THE CRITICAL LINE
+        decode_responses=True 
     )
     redis_conn.ping()
-    logger.info(f"Connected to Redis for Sessions/Celery at {app.config['CELERY_BROKER_URL']}")
+    logger.info(f"Connected to Redis for task tracking at {app.config['CELERY_BROKER_URL']}")
 except Exception as e:
     logger.critical(f"Failed to connect to Redis: {e}")
     redis_conn = None
-    # If Redis is down, we must stop the app
-    raise e
-
-# 2. Tell Flask-Session to use THIS connection
-app.config['SESSION_REDIS'] = redis_conn
-
-# 3. NOW initialize Flask-Session
-Session(app)
-
-# ==========================================================
-# ================== END OF FIX ============================
-# ==========================================================
-
-
-# We NO LONGER need the old, redundant connection block.
-# The `redis_conn` object is already created.
 
 # Ensure secret key is set
 if not app.secret_key:
@@ -144,7 +129,7 @@ def setup_celery_logging(logger, **kwargs):
 
 if not app.config['PRODUCTION']:
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-    logger.info("OAuth insecure transport enabled for local development.")
+    logger.info("OAuth insecure-transport enabled for local development.")
 
 # Import routes and tasks AFTER app and celery are defined
 from app import routes

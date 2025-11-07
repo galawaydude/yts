@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-import redis # <-- THIS IS THE FIX
+import redis # <-- THIS IS CORRECT
 
 load_dotenv()
 
@@ -32,12 +32,14 @@ class Config:
     # --- SESSION FIX ---
     # Use Redis for session storage instead of 'filesystem'
     SESSION_TYPE = 'redis'
-    # Use the same broker URL as Celery
+    
+    # This is the dedicated connection for Flask-Session.
+    # It does NOT have decode_responses=True, which is correct.
     SESSION_REDIS = redis.from_url(os.environ.get('CELERY_BROKER_URL') or 'redis://localhost:6379/0')
     
     SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
     SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
+    SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax') # Reads 'Lax' from your .env
     # --- END OF SESSION FIX ---
     
     # Determine if we're in production
