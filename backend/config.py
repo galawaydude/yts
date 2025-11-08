@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-import redis # <-- THIS IS CORRECT
+import redis
 
 load_dotenv()
 
@@ -12,43 +12,41 @@ class Config:
     GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
     GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
     
-    # Fallback for old local-only
-    ELASTICSEARCH_URL = os.environ.get('ELASTICSEARCH_URL') or 'http://localhost:9200'
-    
-    # New Cloud variables
+    # Elasticsearch
     ELASTIC_ENDPOINT_URL = os.environ.get('ELASTIC_ENDPOINT_URL')
     ELASTIC_USER = os.environ.get('ELASTIC_USER')
     ELASTIC_PASSWORD = os.environ.get('ELASTIC_PASSWORD')
+    # Fallback for local
+    ELASTICSEARCH_URL = os.environ.get('ELASTICSEARCH_URL') or 'http://localhost:9200'
     
-    # YouTube API configuration
+    # YouTube API
     YOUTUBE_API_KEY = os.environ.get('YOUTUBE_API_KEY')
     
-    # Frontend URL for CORS and redirects
+    # URLs
     FRONTEND_URL = os.environ.get('FRONTEND_URL') or 'http://localhost:3000'
-    
-    # OAuth redirect URI
     OAUTH_REDIRECT_URI = os.environ.get('OAUTH_REDIRECT_URI') or 'http://localhost:5000/api/auth/callback'
     
-    # --- SESSION FIX ---
-    # Use Redis for session storage instead of 'filesystem'
+    # --- SESSION CONFIGURATION (THE FIX) ---
     SESSION_TYPE = 'redis'
-    
-    # This is the dedicated connection for Flask-Session.
-    # It does NOT have decode_responses=True, which is correct.
+    # We need a dedicated Redis connection for sessions
     SESSION_REDIS = redis.from_url(os.environ.get('CELERY_BROKER_URL') or 'redis://localhost:6379/0')
     
-    SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
+    # CRITICAL: If we are in production (FRONTEND_URL is set to something real),
+    # we MUST force these settings for cross-domain cookies to work.
+    if os.environ.get('FRONTEND_URL') and 'localhost' not in os.environ.get('FRONTEND_URL'):
+        # Production Settings (Cloud Run -> Cloudflare Pages)
+        SESSION_COOKIE_SECURE = True
+        SESSION_COOKIE_SAMESITE = 'None'
+    else:
+        # Local Development Settings
+        SESSION_COOKIE_SECURE = False
+        SESSION_COOKIE_SAMESITE = 'Lax'
+        
     SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax') # Reads 'Lax' from your .env
-    # --- END OF SESSION FIX ---
+    # ---------------------------------------
     
-    # Determine if we're in production
+    # Other Configs
     PRODUCTION = os.environ.get('PRODUCTION', 'False').lower() == 'true'
-    
-    # Port configuration for Railway
     PORT = int(os.environ.get('PORT', 5000))
-
-    # Load Celery configuration from environment
     CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL') or 'redis://localhost:6379/0'
-    # Use the UPPERCASE variable name
     RESULT_BACKEND = os.environ.get('RESULT_BACKEND') or 'redis://localhost:6379/0'
