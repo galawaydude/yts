@@ -1167,3 +1167,142 @@ em {
   background-color: rgba(0, 0, 0, 0.2);
   border-radius: 4px;
 }
+
+/* =========================================
+   MOBILE OPTIMIZATIONS
+   Add this to the very end of App.css
+========================================= */
+
+@media (max-width: 768px) {
+  /* 1. Fix Video Cards to stack vertically */
+  .video-card {
+    flex-direction: column;
+  }
+
+  .video-thumbnail-container {
+    flex: none; /* Disable the fixed 320px width */
+    width: 100%; /* Make it full width */
+    height: 200px; /* Give it a good height for a phone */
+  }
+
+  /* 2. Make search options wrap if they don't fit */
+  .search-options {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  /* 3. Reduce massive padding on small screens to save space */
+  .app {
+    padding: 10px;
+  }
+  .search-interface {
+    padding: 15px;
+  }
+  .auth-container {
+    margin: 40px auto;
+    padding: 20px;
+    width: 95%;
+  }
+
+  /* 4. Adjust header for very small screens */
+  .app-header {
+    flex-direction: column;
+    gap: 15px;
+    text-align: center;
+  }
+  
+  /* 5. Tweak indexing queue for narrow screens */
+  .indexing-queue-item {
+     flex-wrap: wrap; /* Allow progress bar to drop down if needed */
+  }
+  .queue-item-title {
+     flex: 1 0 100%; /* Title takes full width on tiny screens */
+     margin-bottom: 5px;
+  }
+  .queue-item-progress-bar {
+     min-width: 150px; /* Ensure bar doesn't get too tiny */
+  }
+}
+
+
+/* ... inside your existing @media (max-width: 768px) block ... */
+
+  /* 6. Fix Playlist Header & Actions wrapping */
+  .playlist-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+
+  .playlist-actions {
+    width: 100%;
+    flex-wrap: wrap; /* Allow buttons to wrap to next line */
+    gap: 10px;
+  }
+
+  /* Optional: Make buttons grow to fill space on phones for easier tapping */
+  .playlist-actions button {
+    flex: 1 0 auto; 
+  }
+
+  /* 7. Fix Search Bar overflowing */
+  .search-input-container {
+    flex-direction: column; /* Stack input above button */
+    width: 100%;
+  }
+
+  .search-input {
+    width: 100%;
+  }
+
+  .search-button {
+    width: 100%; /* Full width button looks better stacked */
+  }
+
+
+/* =========================================
+   FINAL UI POLISH
+   Add to the very end of App.css
+========================================= */
+
+/* 1. Fix Back Button: Make it small and sit top-left */
+.back-button {
+  width: auto !important;
+  display: inline-block;
+  margin-bottom: 20px;
+  padding: 8px 15px;
+  font-size: 14px;
+  /* Optional: match the teal color if you like, or keep primary */
+  background-color: var(--secondary-color); 
+  color: var(--dark-color);
+}
+
+/* 2. Fix Search Button: Stop it from stretching full width */
+.search-button {
+  width: auto !important; /* Overrides the mobile 100% width */
+  min-width: 120px;
+  align-self: flex-start; /* Prevents stretching in flex column */
+}
+
+/* 3. Standardize ALL Action Buttons (Update, Export, Reindex, Delete) */
+/* This ensures they all have EXACTLY the same size and shape */
+.playlist-actions button,
+.export-button,
+.reindex-button,
+.full-reindex-button,
+.delete-index-button {
+  padding: 12px 20px !important;
+  height: 50px !important; /* Force exact same height */
+  font-size: 16px !important;
+  font-family: 'VT323', monospace !important;
+  text-transform: uppercase;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+/* Ensure the container doesn't stretch them either */
+.playlist-actions {
+  align-items: flex-start; 
+}

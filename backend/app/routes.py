@@ -21,6 +21,47 @@ try:
 except Exception as e:
     logger.error(f"Failed to create metadata index on startup: {e}")
 
+
+
+
+
+@app.route('/health')
+def health_check():
+    """
+    Health check endpoint to verify the service and its dependencies are up.
+    """
+    status = {
+        "status": "ok",
+        "service": "youtube-transcript-search-api",
+        "timestamp": datetime.utcnow().isoformat(),
+        "dependencies": {
+            "elasticsearch": False,
+            "redis": False
+        }
+    }
+    
+    # Check Elasticsearch
+    try:
+        if es and es.ping():
+            status["dependencies"]["elasticsearch"] = True
+        else:
+            status["status"] = "degraded"
+    except Exception:
+        status["status"] = "degraded"
+
+    # Check Redis
+    try:
+        if redis_conn and redis_conn.ping():
+            status["dependencies"]["redis"] = True
+        else:
+            status["status"] = "degraded"
+    except Exception:
+        status["status"] = "degraded"
+
+    # Return 200 OK even if degraded, as the HTTP server itself is working.
+    # Some load balancers prefer 503 if degraded, but for simple monitoring 200 is usually fine.
+    return jsonify(status), 200
+
 @app.route('/api/auth/login')
 def login():
     auth_url = get_auth_url()

@@ -12,7 +12,7 @@ import {
   deletePlaylistIndex,
   getIndexingStatus,
   getAuthStatus,
-  cancelIndexing, // <-- IMPORT NEW FUNCTION
+  cancelIndexing,
 } from './services/api';
 
 function App() {
@@ -52,11 +52,9 @@ function App() {
     checkAuth();
   }, [fetchIndexedPlaylists]);
 
-  // This polling function is updated to fix the race condition
   const checkAllIndexingStatuses = useCallback(async () => {
     if (indexingPlaylists.length === 0) return;
 
-    // A list to hold the new metadata from completed tasks
     let completedPlaylistsData = [];
     
     const newIndexingPlaylists = await Promise.all(
@@ -66,7 +64,6 @@ function App() {
           const status = response.data;
 
           if (status.status === 'completed' || status.status === 'failed') {
-            
             if (status.status === 'completed') {
               let message = `Finished indexing ${playlist.title}.`;
               if (status.incremental && status.new_videos_count > 0) {
@@ -76,7 +73,6 @@ function App() {
               }
               setNotification({ type: 'success', message });
 
-              // Save the new metadata from the response
               if (status.indexed_data) {
                 completedPlaylistsData.push(status.indexed_data);
               }
@@ -84,13 +80,10 @@ function App() {
             } else {
               setNotification({ type: 'error', message: `Failed to index ${playlist.title}: ${status.error}` });
             }
-            
-            return null; // Filter this playlist out
+            return null;
           } else if (status.status === 'not_started') {
-            // This can happen if the task was cancelled on the backend
             return null;
           } else {
-            // It's still in progress, update its status
             return {
               ...playlist,
               status: status.status,
@@ -100,26 +93,21 @@ function App() {
           }
         } catch (error) {
           console.error(`Error checking status for ${playlist.id}:`, error);
-          return playlist; // Keep it in the queue to retry
+          return playlist;
         }
       })
     );
 
-    // Filter out the null (completed/failed) items
     setIndexingPlaylists(newIndexingPlaylists.filter(Boolean));
 
-    // Instead of re-fetching, we manually update the state
-    // with the data we just got from the poll.
     if (completedPlaylistsData.length > 0) {
       setIndexedPlaylists((prev) => {
         let newList = [...prev];
         completedPlaylistsData.forEach(newPlaylist => {
           const existingIndex = newList.findIndex(p => p.playlist_id === newPlaylist.playlist_id);
           if (existingIndex !== -1) {
-            // It was a re-index, replace it
             newList[existingIndex] = newPlaylist;
           } else {
-            // It's a new one, add it to the top
             newList.unshift(newPlaylist);
           }
         });
@@ -131,7 +119,7 @@ function App() {
       setNotification(null);
     }, 5000);
 
-  }, [indexingPlaylists]); // Removed fetchIndexedPlaylists from dependencies
+  }, [indexingPlaylists]);
 
   useEffect(() => {
     if (indexingPlaylists.length === 0) return;
@@ -200,11 +188,8 @@ function App() {
 
     try {
       setError(null);
-      
-      // Pass the title to the backend
       await indexPlaylist(selectedPlaylist.id, selectedPlaylist.title, incremental);
 
-      // Add this playlist to the indexing queue
       setIndexingPlaylists((prev) => [
         ...prev,
         {
@@ -212,7 +197,7 @@ function App() {
           title: selectedPlaylist.title,
           status: 'in_progress',
           progress: 0,
-          total: selectedPlaylist.videoCount, // Use estimate
+          total: selectedPlaylist.videoCount,
         },
       ]);
       
@@ -232,7 +217,6 @@ function App() {
     try {
       await cancelIndexing(playlistId);
       setNotification({ type: 'success', message: 'Indexing cancelled.' });
-      // Remove it from the queue
       setIndexingPlaylists((prev) => prev.filter((p) => p.id !== playlistId));
     } catch (error) {
       console.error('Error cancelling indexing:', error);
@@ -264,7 +248,7 @@ function App() {
         <>
           <IndexingQueue
             queue={indexingPlaylists}
-            onCancel={handleCancelIndexing} // <-- PASS HANDLER
+            onCancel={handleCancelIndexing}
           />
           <PlaylistSelector
             onSelectPlaylist={handleSelectPlaylist}
@@ -279,9 +263,6 @@ function App() {
       (p) => p.id === selectedPlaylist.id
     );
 
-    // ==========================================================
-    // === THIS IS THE FIX: Create a reusable status bar ========
-    // ==========================================================
     const statusBar = currentPlaylistStatus ? (
       <div className="indexing-status">
         <div className="indexing-progress">
@@ -292,31 +273,23 @@ function App() {
         <button
           className="cancel-indexing-button"
           onClick={() => handleCancelIndexing(currentPlaylistStatus.id, currentPlaylistStatus.title)}
-          style={{ marginLeft: '15px' }} // <-- STYLING FIX
+          style={{ marginLeft: '15px', background: 'transparent', border: '1px solid currentColor', padding: '5px 10px', fontSize: '14px' }}
         >
           Cancel
         </button>
       </div>
     ) : null;
-    // ==========================================================
 
     return (
       <div className="playlist-content">
-        <div className="playlist-header">
-          <h2>{selectedPlaylist.title}</h2>
-          <div className="playlist-actions">
-            <button className="back-button" onClick={handleBackToPlaylists}>
-              Back to Playlists
-            </button>
-          </div>
-        </div>
-
-        {/* The old, badly-placed status bar has been removed from here */}
+        {/* UPDATED: Just the back button, no double title header */}
+        <button className="back-button" onClick={handleBackToPlaylists}>
+          ← Back to Playlists
+        </button>
 
         {indexedPlaylists.some((p) => p.playlist_id === selectedPlaylist.id) ? (
-          // --- If playlist IS indexed ---
           <>
-            {statusBar} {/* Show status bar on top of search */}
+            {statusBar}
             <SearchInterface
               playlist={selectedPlaylist}
               onDeleteIndex={handleDeleteIndex}
@@ -325,13 +298,8 @@ function App() {
             />
           </>
         ) : (
-          // --- If playlist is NOT indexed ---
           <div className="index-container">
             <p>This playlist needs to be indexed before you can search it.</p>
-            
-            {/* This now shows EITHER the "Start" button OR the status bar.
-              This is much cleaner.
-            */}
             {!currentPlaylistStatus ? (
               <button
                 onClick={(e) => handleIndexPlaylist(true, e)}
@@ -340,7 +308,7 @@ function App() {
                 Start Indexing
               </button>
             ) : (
-              statusBar // <-- Use the new status bar here
+              statusBar
             )}
           </div>
         )}
