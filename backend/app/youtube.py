@@ -177,8 +177,11 @@ def get_playlist_videos(playlist_id, credentials=None):
 def get_video_transcript(video_id):
     """Get transcript for a video."""
     try:
-        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-        return transcript_list
+        # --- NEW 1.2.x USAGE ---
+        ytt_api = YouTubeTranscriptApi()
+        transcript_obj = ytt_api.fetch(video_id)
+        return transcript_obj.to_raw_data()
+        # -----------------------
     except Exception as e:
         print(f"Error getting transcript for video {video_id}: {e}")
         # Return empty list instead of None to avoid errors

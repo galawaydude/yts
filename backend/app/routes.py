@@ -1,21 +1,17 @@
 from flask import jsonify, request, session, redirect, url_for, send_file
-from app import app, es, logger, celery, redis_conn # <-- IMPORT REDIS_CONN
+from app import app, es, logger, celery, redis_conn
 from app.auth import get_auth_url, get_credentials, SCOPES, get_client_config
 from app.youtube import get_user_playlists, build_youtube_client
 from app.elastic import search_videos, create_metadata_index, get_indexed_playlists_metadata, get_channels_for_playlist, export_playlist_data
 from app.tasks import index_playlist_task
-from celery.result import AsyncResult, GroupResult # <-- IMPORT GROUPRESULT
+from celery.result import AsyncResult, GroupResult
 import os
 from google_auth_oauthlib.flow import Flow
 import json
 from datetime import datetime
 import tempfile
 import traceback
-
-# --- THIS IS THE FIX ---
-# This global dict is removed. We will use Redis.
-# indexing_status = {}
-# ---------------------
+from youtube_transcript_api import YouTubeTranscriptApi
 
 # Define a key prefix for Redis
 TASK_KEY_PREFIX = "yts_task:"
@@ -92,7 +88,6 @@ def playlists():
     
     return jsonify({"playlists": playlists})
 
-# --- THIS IS THE FIX (Part 1) ---
 @app.route('/api/indexing-status', methods=['GET'])
 def get_indexing_status():
     """Get the current indexing status from Redis."""
@@ -139,8 +134,6 @@ def get_indexing_status():
     # Fallback for other states (REVOKED, RETRY, etc.)
     return jsonify({ "status": "not_started", "progress": 0, "total": 0 })
 
-
-# --- THIS IS THE FIX (Part 2) ---
 @app.route('/api/playlist/<playlist_id>/index', methods=['POST'])
 def index_playlist(playlist_id):
     """Start indexing a playlist."""
@@ -171,23 +164,12 @@ def index_playlist(playlist_id):
         incremental = data.get('incremental', False)
         playlist_title = data.get('title', playlist_id)
         
-        # ==========================================================
-        # ==================== SECURITY FIX HERE ===================
-        # ==========================================================
-        # We ONLY pass user-specific tokens.
-        # The app's client_id and client_secret are loaded
-        # from config *inside* the task.
         credentials_dict = {
             'token': credentials.token,
             'refresh_token': credentials.refresh_token,
             'token_uri': credentials.token_uri,
-            # 'client_id': credentials.client_id,       <-- REMOVED
-            # 'client_secret': credentials.client_secret, <-- REMOVED
             'scopes': credentials.scopes
         }
-        # ==========================================================
-        # ================== END OF SECURITY FIX ===================
-        # ==========================================================
         
         # Start the task
         task = index_playlist_task.delay(
@@ -197,8 +179,7 @@ def index_playlist(playlist_id):
             incremental
         )
         
-        # Store the task ID in Redis
-        # We set an expiration of 2 hours, just in case
+        # Store the task ID in Redis with a 2-hour expiration
         redis_conn.set(task_id_key, task.id, ex=7200) 
         
         return jsonify({
@@ -212,9 +193,6 @@ def index_playlist(playlist_id):
         traceback.print_exc()
         return jsonify({"error": error_message}), 500
 
-# ==================================================
-# === CANCELLATION FEATURE: NEW ENDPOINT =========
-# ==================================================
 @app.route('/api/playlist/<playlist_id>/cancel-index', methods=['POST'])
 def cancel_indexing(playlist_id):
     """Cancel a running indexing task."""
@@ -244,21 +222,19 @@ def cancel_indexing(playlist_id):
 
         # 1. Revoke the main "manager" task
         logger.info(f"Revoking main task: {task_id}")
-        celery.control.revoke(task_id, terminate=True, signal='SIGTERM') # <-- 'persistent' removed
+        celery.control.revoke(task_id, terminate=True, signal='SIGTERM')
         
         # 2. Revoke all the "child" tasks in the group
         if group_id:
             logger.info(f"Revoking task group: {group_id}")
             group_result = GroupResult.restore(group_id, app=celery)
             if group_result:
-                group_result.revoke(terminate=True, signal='SIGTERM') # <-- 'persistent' removed
+                group_result.revoke(terminate=True, signal='SIGTERM')
             
         # 3. Clean up the Redis key so a new task can be started
         redis_conn.delete(task_id_key)
         
-        # --- THIS IS THE LINE YOU REQUESTED ---
         logger.info(f"Indexing cancelled for playlist {playlist_id}")
-        # -------------------------------------
         
         return jsonify({"success": True, "message": "Indexing task cancelled"})
 
@@ -266,9 +242,6 @@ def cancel_indexing(playlist_id):
         logger.error(f"Error cancelling task: {e}")
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
-# ==================================================
-# === END OF CANCELLATION FEATURE ==================
-# ==================================================
 
 @app.route('/api/playlist/<playlist_id>/search')
 def search_playlist(playlist_id):
@@ -344,7 +317,6 @@ def delete_playlist_index(playlist_id):
             ignore=[404]
         )
         
-        # --- THIS IS THE FIX (Part 3) ---
         # Also remove from task tracking in case it's stuck
         if redis_conn:
             redis_conn.delete(f"{TASK_KEY_PREFIX}{playlist_id}")
@@ -429,3 +401,26 @@ def debug_index(index_name):
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/debug/transcript/<video_id>')
+def debug_transcript(video_id):
+    try:
+        # --- NEW 1.2.x USAGE ---
+        ytt_api = YouTubeTranscriptApi()
+        transcript_obj = ytt_api.fetch(video_id)
+        # Convert the fancy object back to a standard list of dicts
+        transcript = transcript_obj.to_raw_data()
+        # -----------------------
+        
+        return jsonify({
+            "success": True,
+            "video_id": video_id,
+            "segment_count": len(transcript),
+            "first_segment": transcript[0] if transcript else None,
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "error_type": type(e).__name__
+        }), 400
