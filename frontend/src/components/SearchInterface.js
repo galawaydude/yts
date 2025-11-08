@@ -18,7 +18,7 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex, isIndexing }) => 
   const [totalResults, setTotalResults] = useState(0);
   const [selectedChannels, setSelectedChannels] = useState([]);
   const [channelsInResults, setChannelsInResults] = useState([]);
-  const [showChannelFilter, setShowChannelFilter] = useState(false);
+  // const [showChannelFilter, setShowChannelFilter] = useState(false);
   const [pendingChannelSearch, setPendingChannelSearch] = useState(false);
   const resultsPerPage = 10;
   const [pageInput, setPageInput] = useState('');
