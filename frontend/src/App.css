@@ -1306,3 +1306,85 @@ em {
 .playlist-actions {
   align-items: flex-start; 
 }
+
+/* =========================================
+   FINAL UI POLISH v2
+   Add to the very end of App.css
+   (Replace the previous 'FINAL UI POLISH' block if you added it)
+========================================= */
+
+/* 1. Fix Back Button: Make it small and sit top-left */
+.back-button {
+  width: auto !important;
+  display: inline-block;
+  margin-bottom: 20px;
+  padding: 8px 15px !important;
+  font-size: 14px !important;
+  background-color: var(--secondary-color); 
+  color: var(--dark-color);
+}
+
+/* 2. Fix Search Input Width */
+/* This stops it from being gigantically wide on big screens */
+.search-input {
+  max-width: 500px; /* Adjust this number if you want it wider/narrower */
+}
+
+/* 3. Fix Search Button Width */
+.search-button {
+  width: auto !important;
+  min-width: 120px;
+  padding: 12px 20px !important; /* Match other buttons */
+}
+
+/* 4. Standardize ALL Action Buttons (Update, Export, Reindex, Delete) */
+/* ensures they all have EXACTLY the same height and snappy look */
+.playlist-actions button,
+.export-button,
+.reindex-button,
+.full-reindex-button,
+.delete-index-button {
+  padding: 0 20px !important; /* Horizontal padding only */
+  height: 45px !important;    /* Force exact same height for perfect alignment */
+  font-size: 16px !important;
+  font-family: 'VT323', monospace !important;
+  text-transform: uppercase;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+/* OPTIONAL: If you want the search bar and button centered, uncomment this: */
+/*
+.search-form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.search-input-container {
+  justify-content: center;
+  width: 100%;
+}
+*/
+
+/* Fix uneven button gaps */
+.playlist-actions {
+  display: flex !important;
+  gap: 10px !important; /* Forces EXACT uniform 10px gap between ALL buttons */
+  flex-wrap: wrap !important;
+}
+
+.playlist-actions button {
+  margin: 0 !important; /* Removes any individual button margins causing unevenness */
+  /* Keep the standardized height/padding from before */
+  height: 45px !important;
+}
+
+/* Fix Back Button Hover State */
+.back-button:hover {
+  background-color: var(--accent-color) !important; /* Turns retro yellow on hover */
+  color: var(--dark-color) !important; /* Keeps text dark and readable */
+  transform: translateY(-2px); /* Standard lift effect */
+  box-shadow: 4px 4px 0 rgba(255, 255, 255, 0.2); /* Adds the retro shadow back if missing */
+}
