@@ -465,3 +465,20 @@ def debug_transcript(video_id):
             "error": str(e),
             "error_type": type(e).__name__
         }), 400
+
+
+@app.route('/api/debug/set-session')
+def debug_set_session():
+    try:
+        session['test_key'] = 'it_works!'
+        return jsonify({"status": "session data set", "session_id": session.sid if hasattr(session, 'sid') else "unknown"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/debug/get-session')
+def debug_get_session():
+    try:
+        val = session.get('test_key', 'NOT_FOUND')
+        return jsonify({"status": "read attempt", "value": val, "session_data": dict(session)}), 200
+    except Exception as e:
+         return jsonify({"error": str(e)}), 500
