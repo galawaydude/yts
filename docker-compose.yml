@@ -31,7 +31,7 @@ services:
     build: ./backend
     container_name: yts-worker
     restart: always
-    command: celery -A app.celery worker --loglevel=info --concurrency=4
+    command: celery -A app.celery worker --loglevel=info
     env_file:
       - ./backend/.env
     environment:
