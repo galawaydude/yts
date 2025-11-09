@@ -39,6 +39,7 @@ class Config:
     SESSION_COOKIE_SECURE = True             # required for HTTPS
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "None"         # allows cross-site cookies (Firebase → Cloud Run)
+    SESSION_COOKIE_DOMAIN = "transcriptsearch-451918.web.app"  # 👈 critical fix for "no state in session"
     # -----------------------------
 
     # ==============================
