@@ -11,6 +11,9 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 logger = logging.getLogger(__name__)
 
+# ============================================================
+# FLASK APP INITIALIZATION
+# ============================================================
 app = Flask(__name__)
 app.config.from_object(Config)
 
@@ -19,11 +22,13 @@ app.config.from_object(Config)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 # ----------------------------------
 
-# Redis connection for task tracking
+# ============================================================
+# REDIS CONNECTION
+# ============================================================
 try:
     redis_conn = redis.from_url(
         app.config['CELERY_BROKER_URL'],
-        decode_responses=True 
+        decode_responses=True
     )
     redis_conn.ping()
     logger.info(f"✅ Connected to Redis at {app.config['CELERY_BROKER_URL']}")
@@ -31,7 +36,9 @@ except Exception as e:
     logger.critical(f"❌ Failed to connect to Redis: {e}")
     redis_conn = None
 
-# Ensure secret key is set
+# ============================================================
+# SECRET KEY
+# ============================================================
 if not app.secret_key:
     app.secret_key = os.environ.get('SECRET_KEY') or 'dev-key-for-testing'
 
@@ -39,7 +46,7 @@ if not app.secret_key:
 # CORS CONFIGURATION (🔥 hardcoded for production frontend)
 # ============================================================
 allowed_origins = [
-    "https://transcriptsearch-451918.web.app",  # Firebase frontend
+    "https://transcriptsearch-451918.web.app",  # Firebase frontend (prod)
     "http://localhost:3000"                     # local dev
 ]
 
@@ -54,7 +61,7 @@ CORS(
 )
 
 # ============================================================
-# ELASTICSEARCH CONNECTION LOGIC
+# ELASTICSEARCH CONNECTION
 # ============================================================
 es_username = app.config.get('ELASTIC_USER')
 es_password = app.config.get('ELASTIC_PASSWORD')
@@ -119,5 +126,7 @@ if not app.config['PRODUCTION']:
     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
     logger.info("🔧 OAuth insecure transport enabled (local dev)")
 
-# Import routes and tasks after setup
+# ============================================================
+# IMPORT ROUTES AND TASKS
+# ============================================================
 from app import routes, tasks

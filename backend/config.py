@@ -29,15 +29,16 @@ class Config:
     # ==============================
     # Connectivity & CORS
     # ==============================
-    FRONTEND_URL = os.environ.get('FRONTEND_URL') or 'http://localhost:3000'
+    # 🔒 Hardcoded for production frontend
+    FRONTEND_URL = "https://transcriptsearch-451918.web.app"
 
     # ==============================
     # Session & Cookie Configuration (Client-Side)
     # ==============================
-    # 🔒 Hardcoded for reliable cross-origin cookies (OAuth fix)
-    SESSION_COOKIE_SECURE = True             # must be HTTPS for SameSite=None
+    # These are hardcoded to guarantee stable cross-site OAuth cookie behavior.
+    SESSION_COOKIE_SECURE = True             # required for HTTPS
     SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = "None"         # allow cross-site cookies (Firebase → Cloud Run)
+    SESSION_COOKIE_SAMESITE = "None"         # allows cross-site cookies (Firebase → Cloud Run)
     # -----------------------------
 
     # ==============================

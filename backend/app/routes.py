@@ -31,7 +31,7 @@ def health_check():
     Health check endpoint to verify the service and its dependencies are up.
     """
     status = {
-        "status": "ok",
+        "status": "ok, shit is fixed i guess",
         "service": "youtube-transcript-search-api",
         "timestamp": datetime.utcnow().isoformat(),
         "dependencies": {
