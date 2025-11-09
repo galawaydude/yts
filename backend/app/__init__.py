@@ -7,33 +7,20 @@ from config import Config
 from celery import Celery
 from celery.signals import after_setup_logger
 import redis
-from flask_session import Session
-# --- NEW IMPORT ---
+# NOTE: flask_session is REMOVED. Flask uses native secure cookies now.
 from werkzeug.middleware.proxy_fix import ProxyFix
-# ------------------
 
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config.from_object(Config)
 
-if app.config['PRODUCTION']:
-    @app.before_request
-    def force_https():
-        from flask import request
-        if not request.is_secure:
-            request.environ['wsgi.url_scheme'] = 'https'
-
-# --- CRITICAL FIX FOR CLOUD RUN / FIREBASE ---
-# Tell Flask it is behind a proxy (Google Load Balancer)
-# so it trusts the X-Forwarded-Proto: https header.
+# --- CRITICAL FIX FOR CLOUD RUN ---
+# Tells Flask to trust HTTPS headers from Google's load balancer
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
-# ---------------------------------------------
+# ----------------------------------
 
-# Initialize Session
-Session(app)
-
-# Redis connection for task tracking (Celery)
+# Redis connection for manual task tracking (Optional but good to keep)
 try:
     redis_conn = redis.from_url(
         app.config['CELERY_BROKER_URL'],
