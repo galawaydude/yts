@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config.from_object(Config)
 
+if app.config['PRODUCTION']:
+    @app.before_request
+    def force_https():
+        from flask import request
+        if not request.is_secure:
+            request.environ['wsgi.url_scheme'] = 'https'
+
 # --- CRITICAL FIX FOR CLOUD RUN / FIREBASE ---
 # Tell Flask it is behind a proxy (Google Load Balancer)
 # so it trusts the X-Forwarded-Proto: https header.
