@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # Frontend & Router (Port 80)
+  # Frontend & Router (Host Port 8080 -> Container Port 80)
   frontend:
     build: ./frontend
     container_name: yts-frontend
@@ -20,6 +20,9 @@ services:
       - "5000"
     env_file:
       - ./backend/.env
+    environment:
+      # FORCE Google to allow internal HTTP traffic behind Nginx
+      - OAUTHLIB_INSECURE_TRANSPORT=1
     depends_on:
       - redis
 
@@ -31,6 +34,9 @@ services:
     command: celery -A app.celery worker --loglevel=info
     env_file:
       - ./backend/.env
+    environment:
+      # FORCE Google to allow internal HTTP traffic here too
+      - OAUTHLIB_INSECURE_TRANSPORT=1
     depends_on:
       - redis
       - backend
