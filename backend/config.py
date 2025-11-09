@@ -1,64 +1,54 @@
 import os
 from dotenv import load_dotenv
+import redis # <-- THIS IS CORRECT
 
 load_dotenv()
 
 class Config:
-    # ==============================
-    # Core Flask Configuration
-    # ==============================
+    # Flask configuration
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-key-for-testing'
-    # Defaults to False in production, useful for local debugging
-    DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     
-    # ==============================
-    # Authentication (Google OAuth)
-    # ==============================
+    # Google OAuth configuration
     GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
     GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
-    # In production (VM), this will likely be https://your-new-domain.com/api/auth/callback
-    OAUTH_REDIRECT_URI = os.environ.get('OAUTH_REDIRECT_URI') or 'http://localhost:5000/api/auth/callback'
     
-    # ==============================
-    # External Services (Elastic & YouTube)
-    # ==============================
-    # Option 1: Cloud Elastic (if you still use it)
+    # Fallback for old local-only
+    ELASTICSEARCH_URL = os.environ.get('ELASTICSEARCH_URL') or 'http://localhost:9200'
+    
+    # New Cloud variables
     ELASTIC_ENDPOINT_URL = os.environ.get('ELASTIC_ENDPOINT_URL')
     ELASTIC_USER = os.environ.get('ELASTIC_USER')
     ELASTIC_PASSWORD = os.environ.get('ELASTIC_PASSWORD')
     
-    # Option 2: Local/Docker Elastic (preferred for your new VM setup)
-    # In docker-compose, this will be 'http://elasticsearch:9200'
-    ELASTICSEARCH_URL = os.environ.get('ELASTICSEARCH_URL') or 'http://localhost:9200'
-    
+    # YouTube API configuration
     YOUTUBE_API_KEY = os.environ.get('YOUTUBE_API_KEY')
     
-    # ==============================
-    # Connectivity & CORS
-    # ==============================
-    # Provides a default, but allows overriding via ENV.
-    # For the unified VM setup, this might just be your domain.
-    FRONTEND_URL = os.environ.get('FRONTEND_URL') or "http://localhost:3000"
-
-    # ==============================
-    # Session & Cookie Configuration
-    # ==============================
-    # We use 'Lax' now because on the VM, frontend and backend will share the same domain.
-    # secure=True ensures it only works over HTTPS (which we will set up with Let's Encrypt).
-    SESSION_COOKIE_SECURE = os.environ.get('PRODUCTION', 'False').lower() == 'true'
+    # Frontend URL for CORS and redirects
+    FRONTEND_URL = os.environ.get('FRONTEND_URL') or 'http://localhost:3000'
+    
+    # OAuth redirect URI
+    OAUTH_REDIRECT_URI = os.environ.get('OAUTH_REDIRECT_URI') or 'http://localhost:5000/api/auth/callback'
+    
+    # --- SESSION FIX ---
+    # Use Redis for session storage instead of 'filesystem'
+    SESSION_TYPE = 'redis'
+    
+    # This is the dedicated connection for Flask-Session.
+    # It does NOT have decode_responses=True, which is correct.
+    SESSION_REDIS = redis.from_url(os.environ.get('CELERY_BROKER_URL') or 'redis://localhost:6379/0')
+    
+    SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
     SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = 'Lax' 
-    # SESSION_COOKIE_DOMAIN is intentionally omitted so Flask handles it automatically.
-
-    # ==============================
-    # Background Tasks (Celery)
-    # ==============================
-    # In docker-compose, this will be 'redis://redis:6379/0'
-    CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL') or 'redis://localhost:6379/0'
-    RESULT_BACKEND = os.environ.get('RESULT_BACKEND') or 'redis://localhost:6379/0'
-
-    # ==============================
-    # Miscellaneous
-    # ==============================
+    SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax') # Reads 'Lax' from your .env
+    # --- END OF SESSION FIX ---
+    
+    # Determine if we're in production
     PRODUCTION = os.environ.get('PRODUCTION', 'False').lower() == 'true'
+    
+    # Port configuration for Railway
     PORT = int(os.environ.get('PORT', 5000))
+
+    # Load Celery configuration from environment
+    CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL') or 'redis://localhost:6379/0'
+    # Use the UPPERCASE variable name
+    RESULT_BACKEND = os.environ.get('RESULT_BACKEND') or 'redis://localhost:6379/0'
