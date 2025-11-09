@@ -1,8 +1,5 @@
 import os
 import logging
-from dotenv import load_dotenv
-load_dotenv()
-
 from flask import Flask
 from flask_cors import CORS
 from elasticsearch import Elasticsearch
@@ -10,20 +7,26 @@ from config import Config
 from celery import Celery
 from celery.signals import after_setup_logger
 import redis
-from flask_session import Session # <-- NEW IMPORT
+from flask_session import Session
+# --- NEW IMPORT ---
+from werkzeug.middleware.proxy_fix import ProxyFix
+# ------------------
 
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# --- NEW: INITIALIZE SESSION ---
-# This will read the config from Config (SESSION_TYPE, SESSION_REDIS)
-Session(app)
-# -------------------------------
+# --- CRITICAL FIX FOR CLOUD RUN / FIREBASE ---
+# Tell Flask it is behind a proxy (Google Load Balancer)
+# so it trusts the X-Forwarded-Proto: https header.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+# ---------------------------------------------
 
-# This is your existing Redis connection for task tracking (Celery)
-# This one IS decoded, which is correct for your tasks.
+# Initialize Session
+Session(app)
+
+# Redis connection for task tracking (Celery)
 try:
     redis_conn = redis.from_url(
         app.config['CELERY_BROKER_URL'],
@@ -55,7 +58,7 @@ CORS(
 )
 
 # ===================================================================
-# ===== ELASTICSEARCH CONNECTION LOGIC (MODIFIED) =====
+# ===== ELASTICSEARCH CONNECTION LOGIC =====
 # ===================================================================
 es_username = app.config.get('ELASTIC_USER')
 es_password = app.config.get('ELASTIC_PASSWORD')
@@ -80,14 +83,10 @@ if es_endpoint and es_password and es_username:
             logger.info("Connected to Elastic Cloud successfully!")
         else:
             logger.error("Failed to ping Elastic Cloud!")
-            # --- FIX: FAIL FAST ---
             raise Exception("Failed to ping Elastic Cloud")
-            # --------------------
     except Exception as e:
         logger.critical(f"Error connecting to Elastic Cloud: {str(e)}")
-        # --- FIX: FAIL FAST ---
-        raise e # Re-raise exception to stop the app
-        # --------------------
+        raise e
 else:
     logger.info("Cloud credentials not found. Attempting to connect to Elasticsearch at localhost:9200...")
     es_url = app.config.get('ELASTICSEARCH_URL')
@@ -97,28 +96,19 @@ else:
             logger.info("Connected to localhost Elasticsearch successfully!")
         else:
             logger.error("Failed to connect to localhost Elasticsearch!")
-            # --- FIX: FAIL FAST ---
             raise Exception("Failed to ping localhost Elasticsearch")
-            # --------------------
     except Exception as e:
         logger.critical(f"Error connecting to localhost Elasticsearch: {str(e)}")
-        # --- FIX: FAIL FAST ---
-        raise e # Re-raise exception to stop the app
-        # --------------------
-
-# ===================================================================
+        raise e
 # ===================================================================
 
-
-# Create and configure the Celery instance
+# Create and configure Celery
 celery = Celery(
     app.name, 
     broker=app.config['CELERY_BROKER_URL'],
     backend=app.config['RESULT_BACKEND']
 )
 celery.conf.update(app.config)
-
-# The prefetch_multiplier line has been removed.
 
 logger.info(f"Celery configured with broker at {app.config['CELERY_BROKER_URL']}")
 
