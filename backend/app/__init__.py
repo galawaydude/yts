@@ -9,6 +9,8 @@ from celery.signals import after_setup_logger
 import redis
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+# Configure logging first
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ============================================================
@@ -17,10 +19,10 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# --- CRITICAL FIX FOR CLOUD RUN ---
-# Trust HTTPS headers from Google's load balancer
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
-# ----------------------------------
+# If running behind Nginx (which you will be on the VM), 
+# this tells Flask to trust the headers Nginx sends.
+if app.config['PRODUCTION']:
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
 # ============================================================
 # REDIS CONNECTION
@@ -37,18 +39,18 @@ except Exception as e:
     redis_conn = None
 
 # ============================================================
-# SECRET KEY
+# CORS CONFIGURATION
 # ============================================================
-if not app.secret_key:
-    app.secret_key = os.environ.get('SECRET_KEY') or 'dev-key-for-testing'
-
-# ============================================================
-# CORS CONFIGURATION (🔥 hardcoded for production frontend)
-# ============================================================
+# We now rely on the config variables instead of hardcoded strings.
+# In a unified Nginx setup, strict CORS is less critical, but good to have.
 allowed_origins = [
-    "https://transcriptsearch-451918.web.app",  # Firebase frontend (prod)
-    "http://localhost:3000"                     # local dev
+    app.config['FRONTEND_URL'],
+    "http://localhost:3000"  # Always allow local dev
 ]
+
+# Split comma-separated extra origins if you need them in the future
+if os.environ.get('EXTRA_ALLOWED_ORIGINS'):
+     allowed_origins.extend(os.environ.get('EXTRA_ALLOWED_ORIGINS').split(','))
 
 logger.info(f"🌍 CORS allowed origins: {allowed_origins}")
 
@@ -59,6 +61,8 @@ CORS(
     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"]
 )
+
+# ... (The rest of the file with Elasticsearch connection remains the same)
 
 # ============================================================
 # ELASTICSEARCH CONNECTION
