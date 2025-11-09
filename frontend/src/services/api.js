@@ -1,15 +1,15 @@
 import axios from 'axios';
 
-// Use environment variable for API URL with fallback for local development
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+// Use relative path. Nginx in Docker will handle the routing.
+const API_URL = '/api';
 
-// Log the API URL being used (helpful for debugging)
 console.log(`Using API URL: ${API_URL}`);
 
 const api = axios.create({
   baseURL: API_URL,
   withCredentials: true
 });
+
 
 // Add response interceptor for handling common errors
 api.interceptors.response.use(

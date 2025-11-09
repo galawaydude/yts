@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # Frontend & Router (Port 80)
+  frontend:
+    build: ./frontend
+    container_name: yts-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+  # Flask API (Internal Port 5000)
+  backend:
+    build: ./backend
+    container_name: yts-backend
+    restart: always
+    expose:
+      - "5000"
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - redis
+
+  # Celery Worker (Background Tasks)
+  worker:
+    build: ./backend
+    container_name: yts-worker
+    restart: always
+    command: celery -A app.celery worker --loglevel=info
+    env_file:
+      - ./backend/.env
+    depends_on:
+      - redis
+      - backend
+
+  # Redis (Cache & Sessions)
+  redis:
+    image: "redis:alpine"
+    container_name: yts-redis
+    restart: always
+    expose:
+      - "6379"

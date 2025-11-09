@@ -1,25 +1,27 @@
 import os
 import logging
-from dotenv import load_dotenv
-load_dotenv()
-
 from flask import Flask
 from flask_cors import CORS
+from flask_session import Session
 from elasticsearch import Elasticsearch
 from config import Config
 from celery import Celery
 from celery.signals import after_setup_logger
 import redis
-from flask_session import Session # <-- NEW IMPORT
+from werkzeug.middleware.proxy_fix import ProxyFix
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# --- NEW: INITIALIZE SESSION ---
-# This will read the config from Config (SESSION_TYPE, SESSION_REDIS)
-Session(app)
+if app.config['PRODUCTION']:
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1, x_for=1)
+
+Session(app) # <-- Critical Addition
+
+# ... rest of your file (Redis connection, CORS, Elastic, Celery) ...
 # -------------------------------
 
 # This is your existing Redis connection for task tracking (Celery)
