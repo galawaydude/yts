@@ -1,8 +1,6 @@
 import os
 from dotenv import load_dotenv
-# Redis import is no longer strictly needed here for config, 
-# but kept if you use it for other custom things later.
-import redis 
+import redis
 
 load_dotenv()
 
@@ -10,7 +8,6 @@ class Config:
     # ==============================
     # Core Flask Configuration
     # ==============================
-    # CRITICAL: This key signs your cookies. Keep it safe in Cloud Run secrets!
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-key-for-testing'
     
     # ==============================
@@ -37,10 +34,10 @@ class Config:
     # ==============================
     # Session & Cookie Configuration (Client-Side)
     # ==============================
-    # These tell Flask how to protect the cookie it sends to the browser.
-    SESSION_COOKIE_SECURE = True
+    # 🔒 Hardcoded for reliable cross-origin cookies (OAuth fix)
+    SESSION_COOKIE_SECURE = True             # must be HTTPS for SameSite=None
     SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_SAMESITE = "None"         # allow cross-site cookies (Firebase → Cloud Run)
     # -----------------------------
 
     # ==============================
