@@ -5,15 +5,20 @@ import traceback
 
 from app import es
 
-# es = Elasticsearch(['http://localhost:9200'])
-
 def create_index(index_name, recreate=False):
-    """Create an index with the proper mapping if it doesn't exist or if recreate is True."""
+    """Create an index with the proper mapping and increased limits."""
     mapping = {
         "settings": {
             "index": {
                 "number_of_shards": 1,
-                "number_of_replicas": 0
+                "number_of_replicas": 0,
+                # --- THE FIX: INCREASE NESTED LIMIT TO 100,000 ---
+                "mapping": {
+                    "nested_objects": {
+                        "limit": 100000
+                    }
+                }
+                # -------------------------------------------------
             }
         },
         "mappings": {
@@ -25,9 +30,7 @@ def create_index(index_name, recreate=False):
                 "published_at": {"type": "date"},
                 "view_count": {"type": "long"},
                 "thumbnail": {"type": "keyword"},
-                # --- NEW FIELD FOR CROSS-VIDEO SEARCH ---
                 "transcript_full_text": {"type": "text"},
-                # ----------------------------------------
                 "transcript_segments": {
                     "type": "nested",
                     "properties": {
@@ -48,22 +51,31 @@ def create_index(index_name, recreate=False):
         es.indices.delete(index=index_name)
         es.indices.create(index=index_name, body=mapping)
         print(f"Recreated index: {index_name}")
-        return True, 0  # Return True for created, 0 for existing docs count
+        return True, 0
     
     # Create new index if it doesn't exist
     elif not index_exists:
         es.indices.create(index=index_name, body=mapping)
         print(f"Created new index: {index_name}")
-        return True, 0  # Return True for created, 0 for existing docs count
+        return True, 0
     
     # Index exists and we're not recreating it
     else:
-        # Count existing documents
+        # --- CRITICAL: Update settings for existing index dynamically ---
+        try:
+            es.indices.put_settings(index=index_name, body={
+                "index.mapping.nested_objects.limit": 100000
+            })
+            print(f"Updated settings for existing index: {index_name}")
+        except Exception as e:
+            print(f"Could not update settings: {e}")
+        # ---------------------------------------------------------------
+
         count_query = {"query": {"match_all": {}}}
         count_result = es.count(index=index_name, body=count_query)
         existing_count = count_result.get('count', 0)
         print(f"Using existing index: {index_name} with {existing_count} documents")
-        return False, existing_count  # Return False for not created, count of existing docs
+        return False, existing_count
 
 def get_indexed_video_ids(index_name):
     """Get a list of all video IDs already indexed."""
@@ -83,7 +95,9 @@ def get_indexed_video_ids(index_name):
         response = es.search(index=index_name, body=query)
         
         # Extract video IDs
-        hits = response.get('hits', {}).get('hits', [])
+        # Handle ES 8.x object response safely
+        hits = response['hits']['hits'] if isinstance(response, dict) else response.body['hits']['hits']
+        
         video_ids = [hit.get('_source', {}).get('video_id') for hit in hits if hit.get('_source', {}).get('video_id')]
         
         return video_ids
@@ -97,9 +111,7 @@ def index_video(index_name, video_data, transcript):
     try:
         # Format transcript segments if available
         formatted_transcript = []
-        # --- NEW: Collect all text parts ---
         all_text_parts = []
-        # -----------------------------------
         
         if transcript:
             for segment in transcript:
@@ -109,9 +121,7 @@ def index_video(index_name, video_data, transcript):
                     "start": float(segment.get("start", 0)),
                     "duration": float(segment.get("duration", 0))
                 })
-                # --- NEW: Append to list ---
                 all_text_parts.append(text)
-                # ---------------------------
 
         # Prepare document
         document = {
@@ -122,9 +132,7 @@ def index_video(index_name, video_data, transcript):
             "published_at": video_data["publishedAt"],
             "view_count": int(video_data["viewCount"]),
             "thumbnail": video_data["thumbnail"],
-            # --- NEW: Join all parts into one big string ---
             "transcript_full_text": " ".join(all_text_parts),
-            # -----------------------------------------------
             "transcript_segments": formatted_transcript
         }
 
@@ -157,16 +165,14 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
 
         main_should_clauses = []
         
-        # --- 1. Root Level Fields (Title, Description, FULL TRANSCRIPT) ---
+        # --- 1. Root Level Fields ---
         top_level_fields = []
         if 'title' in search_in:
             top_level_fields.append("title^3")
         if 'description' in search_in:
             top_level_fields.append("description^2")
-        # --- NEW: Add full transcript to root level search ---
         if 'transcript' in search_in:
             top_level_fields.append("transcript_full_text")
-        # -----------------------------------------------------
             
         if top_level_fields:
             main_should_clauses.append({
@@ -176,8 +182,7 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
                 }
             })
             
-        # --- 2. Transcript Segments (Nested Level for Highlighting) ---
-        # We still keep this! It's how we find the EXACT timestamps to show the user.
+        # --- 2. Transcript Segments (Nested Level) ---
         if 'transcript' in search_in:
             main_should_clauses.append({
                 "nested": {
@@ -249,6 +254,7 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
         # Execute search
         raw_response = es.search(index=index_name, body=search_body)
         
+        # Handle ES 8.x object vs dict
         if hasattr(raw_response, 'body'):
             response = raw_response.body
         else:
@@ -309,7 +315,13 @@ def export_playlist_data(index_name, max_size=10000):
 
         query = {"query": {"match_all": {}}, "size": max_size}
         response = es.search(index=index_name, body=query)
-        hits = response.get('hits', {}).get('hits', [])
+        
+        # Handle ES 8.x object vs dict
+        if hasattr(response, 'body'):
+            hits = response.body['hits']['hits']
+        else:
+            hits = response['hits']['hits']
+            
         playlist_data = [hit.get('_source', {}) for hit in hits]
         
         metadata = {}
@@ -340,8 +352,10 @@ def get_channels_for_playlist(index_name):
             "aggs": {"unique_channels": {"terms": {"field": "channel", "size": 1000}}}
         }
         response = es.search(index=index_name, body=agg_query)
+        
         if hasattr(response, 'body'): response = response.body
         else: response = dict(response)
+        
         buckets = response.get('aggregations', {}).get('unique_channels', {}).get('buckets', [])
         return [bucket.get('key') for bucket in buckets]
     except Exception as e:
@@ -390,7 +404,13 @@ def get_indexed_playlists_metadata():
             index="yts_metadata",
             body={"size": 1000, "query": {"match_all": {}}, "sort": [{"last_indexed": "desc"}]}
         )
-        return [hit["_source"] for hit in result["hits"]["hits"]]
+        # Handle ES 8.x object vs dict
+        if hasattr(result, 'body'):
+            hits = result.body['hits']['hits']
+        else:
+            hits = result['hits']['hits']
+            
+        return [hit["_source"] for hit in hits]
     except Exception as e:
         print(f"Error getting indexed playlists metadata: {e}")
         return []
