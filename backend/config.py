@@ -20,6 +20,11 @@ class Config:
     ELASTIC_PASSWORD = os.environ.get('ELASTIC_PASSWORD')
     YOUTUBE_API_KEY = os.environ.get('YOUTUBE_API_KEY')
 
+    # Webshare Proxies (Residential)
+    # Note: WEBSHARE_FILTER_LOCATIONS has been removed
+    WEBSHARE_PROXY_USERNAME = os.environ.get('WEBSHARE_PROXY_USERNAME')
+    WEBSHARE_PROXY_PASSWORD = os.environ.get('WEBSHARE_PROXY_PASSWORD')
+
     # Frontend URL (for CORS)
     FRONTEND_URL = os.environ.get('FRONTEND_URL') or "http://localhost:3000"
 

@@ -37,6 +37,10 @@ services:
     environment:
       # FORCE Google to allow internal HTTP traffic here too
       - OAUTHLIB_INSECURE_TRANSPORT=1
+      # --- WEBSHARE PROXY SETTINGS (No location filter) ---
+      - WEBSHARE_PROXY_USERNAME=${WEBSHARE_PROXY_USERNAME}
+      - WEBSHARE_PROXY_PASSWORD=${WEBSHARE_PROXY_PASSWORD}
+      # -------------------------------
     depends_on:
       - redis
       - backend

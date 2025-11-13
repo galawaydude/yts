@@ -1,7 +1,9 @@
 from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api.proxies import WebshareProxyConfig
 from app.auth import build_youtube_client, API_SERVICE_NAME, API_VERSION
 import googleapiclient.discovery
 from google.oauth2.credentials import Credentials
+from app import app 
 
 def get_user_playlists():
     """Get all playlists for the authenticated user, including Liked Videos and saved playlists."""
@@ -106,8 +108,6 @@ def get_playlist_videos(playlist_id, credentials=None):
     if not youtube:
         return []
     
-    # --- START REFACTOR: BATCHING VIDEO DETAILS ---
-    
     playlist_items_data = []
     next_page_token = None
     
@@ -132,7 +132,7 @@ def get_playlist_videos(playlist_id, credentials=None):
             break
     
     if not playlist_items_data:
-        return [] # Playlist is empty
+        return [] 
 
     # Step 2: Get all video details (stats, description) in batches of 50
     video_details_map = {}
@@ -143,7 +143,7 @@ def get_playlist_videos(playlist_id, credentials=None):
         
         video_request = youtube.videos().list(
             part="snippet,statistics",
-            id=",".join(chunk)  # Batch request for 50 videos
+            id=",".join(chunk) 
         )
         video_response = video_request.execute()
         
@@ -151,14 +151,12 @@ def get_playlist_videos(playlist_id, credentials=None):
             video_details_map[video_info['id']] = video_info
 
     # Step 3: Combine playlist data with video details
-    # This ensures the final data structure is identical to your original code
     videos = []
     for data in playlist_items_data:
         item = data['item']
         video_id = data['video_id']
-        video_info = video_details_map.get(video_id) # Safely get details
+        video_info = video_details_map.get(video_id)
         
-        # Only add video if details were found (i.e., not private/deleted)
         if video_info:
             videos.append({
                 'id': video_id,
@@ -170,19 +168,33 @@ def get_playlist_videos(playlist_id, credentials=None):
                 'viewCount': video_info['statistics'].get('viewCount', '0')
             })
     
-    # --- END REFACTOR ---
-    
     return videos
 
 def get_video_transcript(video_id):
-    """Get transcript for a video."""
+    """Get transcript for a video using Webshare proxies."""
+    
+    # --- WEBSHARE CONFIGURATION ---
+    username = app.config.get('WEBSHARE_PROXY_USERNAME')
+    password = app.config.get('WEBSHARE_PROXY_PASSWORD')
+
+    proxy_config_obj = None
+    
+    if username and password:
+        # Create the config object (No filter_ip_locations argument needed)
+        proxy_config_obj = WebshareProxyConfig(
+            proxy_username=username,
+            proxy_password=password
+        )
+    # -----------------------------
+
     try:
-        # --- NEW 1.2.x USAGE ---
-        ytt_api = YouTubeTranscriptApi()
+        # Initialize with the proxy config
+        ytt_api = YouTubeTranscriptApi(proxy_config=proxy_config_obj)
+        
+        # Fetch the transcript
         transcript_obj = ytt_api.fetch(video_id)
         return transcript_obj.to_raw_data()
-        # -----------------------
+
     except Exception as e:
         print(f"Error getting transcript for video {video_id}: {e}")
-        # Return empty list instead of None to avoid errors
         return []
