@@ -1,4 +1,5 @@
 from elasticsearch import Elasticsearch
+from elasticsearch.helpers import scan  # <--- Added this import
 import json
 from datetime import datetime
 import traceback
@@ -12,13 +13,11 @@ def create_index(index_name, recreate=False):
             "index": {
                 "number_of_shards": 1,
                 "number_of_replicas": 0,
-                # --- THE FIX: INCREASE NESTED LIMIT TO 100,000 ---
                 "mapping": {
                     "nested_objects": {
                         "limit": 100000
                     }
                 }
-                # -------------------------------------------------
             }
         },
         "mappings": {
@@ -61,7 +60,7 @@ def create_index(index_name, recreate=False):
     
     # Index exists and we're not recreating it
     else:
-        # --- CRITICAL: Update settings for existing index dynamically ---
+        # Update settings for existing index dynamically
         try:
             es.indices.put_settings(index=index_name, body={
                 "index.mapping.nested_objects.limit": 100000
@@ -69,7 +68,6 @@ def create_index(index_name, recreate=False):
             print(f"Updated settings for existing index: {index_name}")
         except Exception as e:
             print(f"Could not update settings: {e}")
-        # ---------------------------------------------------------------
 
         count_query = {"query": {"match_all": {}}}
         count_result = es.count(index=index_name, body=count_query)
@@ -78,27 +76,27 @@ def create_index(index_name, recreate=False):
         return False, existing_count
 
 def get_indexed_video_ids(index_name):
-    """Get a list of all video IDs already indexed."""
+    """Get a list of all video IDs already indexed using the Scan API (safe for large datasets)."""
     try:
         # Check if index exists
         if not es.indices.exists(index=index_name):
             return []
             
-        # Query to get all video IDs
-        query = {
-            "_source": ["video_id"],
-            "query": {"match_all": {}},
-            "size": 500000  # Set a reasonable limit
-        }
-        
-        # Execute the search
-        response = es.search(index=index_name, body=query)
-        
-        # Extract video IDs
-        # Handle ES 8.x object response safely
-        hits = response['hits']['hits'] if isinstance(response, dict) else response.body['hits']['hits']
-        
-        video_ids = [hit.get('_source', {}).get('video_id') for hit in hits if hit.get('_source', {}).get('video_id')]
+        # Use the Scan helper to fetch ALL IDs efficiently
+        # This handles millions of results without the "Result window too large" error
+        scanner = scan(
+            es,
+            index=index_name,
+            query={"query": {"match_all": {}}},
+            _source=["video_id"],
+            size=1000  # Fetch in batches of 1000
+        )
+
+        video_ids = []
+        for hit in scanner:
+            vid = hit.get('_source', {}).get('video_id')
+            if vid:
+                video_ids.append(vid)
         
         return video_ids
         
