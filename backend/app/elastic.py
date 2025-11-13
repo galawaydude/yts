@@ -192,7 +192,7 @@ def search_videos(index_name, query, size=10, from_pos=0, search_in=None, channe
                         }
                     },
                     "inner_hits": {
-                        "size": 5, 
+                        "size": 100, 
                         "highlight": {
                             "fields": {
                                 "transcript_segments.text": {
