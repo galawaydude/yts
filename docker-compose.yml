@@ -29,9 +29,13 @@ services:
     build: ./backend
     container_name: yts-worker
     restart: always
-    command: celery -A app.celery worker --loglevel=info
-    # This loads all variables (including Webshare ones) automatically
+    # --- GEVENT SPEED BOOST ---
+    # -P gevent: Use lightweight threads
+    # -c 50: Process 50 videos simultaneously
+    command: celery -A app.celery worker --loglevel=info -P gevent -c 50
+    # --------------------------
     env_file:
+      # Loads all variables (including Webshare) from your file automatically
       - ./backend/.env
     environment:
       # FORCE Google to allow internal HTTP traffic here too

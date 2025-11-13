@@ -20,6 +20,7 @@ Flask==2.2.3
 Flask-Cors==3.0.10
 Flask-Session==0.4.0
 Flask-SocketIO==5.5.1
+gevent==25.9.1
 google-api-core==2.28.1
 google-api-python-client==2.80.0
 google-auth==2.16.2
@@ -64,3 +65,5 @@ wcwidth==0.2.14
 Werkzeug==2.2.3
 wsproto==1.2.0
 youtube-transcript-api==1.2.3
+zope.event==6.1
+zope.interface==8.1
