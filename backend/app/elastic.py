@@ -76,7 +76,7 @@ def get_indexed_video_ids(index_name):
         query = {
             "_source": ["video_id"],
             "query": {"match_all": {}},
-            "size": 10000  # Set a reasonable limit
+            "size": 500000  # Set a reasonable limit
         }
         
         # Execute the search
