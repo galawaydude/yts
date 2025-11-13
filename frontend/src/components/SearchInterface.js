@@ -18,13 +18,9 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex, isIndexing }) => 
   const [totalResults, setTotalResults] = useState(0);
   const [selectedChannels, setSelectedChannels] = useState([]);
   const [channelsInResults, setChannelsInResults] = useState([]);
-  // const [showChannelFilter, setShowChannelFilter] = useState(false);
   const [pendingChannelSearch, setPendingChannelSearch] = useState(false);
   const resultsPerPage = 10;
   const [pageInput, setPageInput] = useState('');
-
-  // The 'isIndexing' state and 'useEffect' polling hook have been REMOVED.
-  // The 'isIndexing' prop is now used directly.
 
   const handleSearch = async (e, page = 1, channelFilters = selectedChannels) => {
     if (e) e.preventDefault();
@@ -51,7 +47,9 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex, isIndexing }) => 
       setCurrentPage(page);
       setSearchPerformed(true);
       
-      // Set channels from search results
+      // Sync page input with current page
+      setPageInput(page.toString());
+      
       setChannelsInResults(response.data.channels || []);
     } catch (error) {
       console.error('Search error:', error);
@@ -71,12 +69,9 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex, isIndexing }) => 
   const handleChannelToggle = (channelName) => {
     setSelectedChannels(prev => {
       const newChannels = prev.includes(channelName)
-        ? prev.filter(c => c !== channelName) // Remove channel if already selected
-        : [...prev, channelName];         // Add channel if not selected
-      
-      // Set flag that we have pending channel changes
+        ? prev.filter(c => c !== channelName)
+        : [...prev, channelName];
       setPendingChannelSearch(true);
-      
       return newChannels;
     });
   };
@@ -97,12 +92,10 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex, isIndexing }) => 
   };
 
   const handleIncrementalReindex = (e) => {
-    // Pass the event object to onReindex so it can be properly handled
     onReindex(true, e);
   };
 
   const handleFullReindex = (e) => {
-    // Pass the event object to onReindex so it can be properly handled
     e.preventDefault();
     if (window.confirm("This will reindex the entire playlist from scratch. Continue?")) {
       onReindex(false, e);
@@ -114,6 +107,18 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex, isIndexing }) => 
   const handlePageChange = (page) => {
     if (page < 1 || page > totalPages) return;
     handleSearch(null, page);
+  };
+
+  // --- NEW FUNCTION: Handle Manual Page Input ---
+  const handleManualPageSubmit = (e) => {
+    if (e) e.preventDefault();
+    const pageNum = parseInt(pageInput);
+    if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= totalPages) {
+        handlePageChange(pageNum);
+    } else {
+        // Reset if invalid
+        setPageInput(currentPage.toString());
+    }
   };
 
   return (
@@ -140,7 +145,7 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex, isIndexing }) => 
         </div>
       </div>
 
-      <form onSubmit={handleSearch} className="search-form">
+      <form onSubmit={(e) => handleSearch(e, 1)} className="search-form">
         <div className="search-input-container">
           <input
             type="text"
@@ -194,7 +199,6 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex, isIndexing }) => 
         <LoadingScreen message="Searching..." />
       ) : searchPerformed ? (
         <>
-          {/* Search Results Count */}
           <div className="results-count-container">
             <p className="results-count">
               {totalResults === 0 ? 'No results found' : 
@@ -204,7 +208,6 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex, isIndexing }) => 
 
           {results.length > 0 ? (
             <>
-              {/* Channel filter section - displayed after search results are shown */}
               {channelsInResults.length > 0 && (
                 <div className="channel-filter-container">
                   <div className="channel-filter-header">
@@ -256,30 +259,34 @@ const SearchInterface = ({ playlist, onDeleteIndex, onReindex, isIndexing }) => 
                   >
                     Previous
                   </button>
+                  
                   <span className="pagination-info">
                     Page {currentPage} of {totalPages}
                   </span>
-                  <input
-                    type="number"
-                    min="1"
-                    max={totalPages}
-                    value={pageInput || ''}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setPageInput(value);
-                      const pageNum = parseInt(value);
-                      if (!isNaN(pageNum) && pageNum >= 1 && pageNum <= totalPages) {
-                        handlePageChange(pageNum);
-                      }
-                    }}
-                    onBlur={() => {
-                      if (!pageInput || isNaN(parseInt(pageInput))) {
-                        setPageInput(currentPage.toString());
-                      }
-                    }}
-                    className="page-input"
-                    placeholder="#"
-                  />
+                  
+                  {/* --- UPDATED PAGINATION INPUT --- */}
+                  <div className="page-jump-container" style={{display: 'flex', alignItems: 'center'}}>
+                    <input
+                        type="number"
+                        min="1"
+                        max={totalPages}
+                        value={pageInput}
+                        // Just update state, don't search
+                        onChange={(e) => setPageInput(e.target.value)} 
+                        // Search on Enter Key
+                        onKeyDown={(e) => e.key === 'Enter' && handleManualPageSubmit(e)} 
+                        className="page-input"
+                        placeholder="#"
+                    />
+                    <button 
+                        onClick={handleManualPageSubmit} 
+                        className="pagination-button page-go-button"
+                    >
+                        Go
+                    </button>
+                  </div>
+                  {/* -------------------------------- */}
+
                   <button 
                     onClick={() => handlePageChange(currentPage + 1)}
                     disabled={currentPage === totalPages}

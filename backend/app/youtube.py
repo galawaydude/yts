@@ -1,4 +1,4 @@
-from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
 from youtube_transcript_api.proxies import WebshareProxyConfig
 from app.auth import build_youtube_client, API_SERVICE_NAME, API_VERSION
 import googleapiclient.discovery
@@ -6,7 +6,7 @@ from google.oauth2.credentials import Credentials
 from app import app 
 
 def get_user_playlists():
-    """Get all playlists for the authenticated user, including Liked Videos and saved playlists."""
+    """Get all playlists for the authenticated user."""
     youtube = build_youtube_client()
     if not youtube:
         return []
@@ -15,7 +15,6 @@ def get_user_playlists():
     
     # Add Liked Videos special playlist
     try:
-        # Get channel ID first
         channels_response = youtube.channels().list(
             part="contentDetails",
             mine=True
@@ -23,10 +22,9 @@ def get_user_playlists():
         
         if channels_response['items']:
             channel = channels_response['items'][0]
-            user_channel_id = channel['id']  # Store user's channel ID to check ownership
+            user_channel_id = channel['id']
             liked_playlist_id = channel['contentDetails']['relatedPlaylists']['likes']
             
-            # Get the liked videos playlist details
             liked_videos_response = youtube.playlists().list(
                 part="snippet,contentDetails",
                 id=liked_playlist_id
@@ -45,7 +43,6 @@ def get_user_playlists():
         print(f"Error fetching Liked Videos playlist: {e}")
     
     try:
-        # Get all playlists in user's library (both owned and saved)
         request = youtube.playlists().list(
             part="snippet,contentDetails",
             mine=True,
@@ -54,9 +51,7 @@ def get_user_playlists():
         response = request.execute()
         
         for item in response.get('items', []):
-            # Check if the playlist is owned by the user by comparing channel IDs
             is_own = item['snippet']['channelId'] == user_channel_id
-            
             playlists.append({
                 'id': item['id'],
                 'title': item['snippet']['title'],
@@ -66,7 +61,6 @@ def get_user_playlists():
                 'channelTitle': item['snippet']['channelTitle'] if not is_own else None
             })
             
-        # Handle pagination if there are more playlists
         while 'nextPageToken' in response:
             request = youtube.playlists().list(
                 part="snippet,contentDetails",
@@ -77,9 +71,7 @@ def get_user_playlists():
             response = request.execute()
             
             for item in response.get('items', []):
-                # Check if the playlist is owned by the user
                 is_own = item['snippet']['channelId'] == user_channel_id
-                
                 playlists.append({
                     'id': item['id'],
                     'title': item['snippet']['title'],
@@ -111,7 +103,6 @@ def get_playlist_videos(playlist_id, credentials=None):
     playlist_items_data = []
     next_page_token = None
     
-    # Step 1: Get all playlist items and their video IDs
     while True:
         request = youtube.playlistItems().list(
             part="snippet,contentDetails",
@@ -134,7 +125,6 @@ def get_playlist_videos(playlist_id, credentials=None):
     if not playlist_items_data:
         return [] 
 
-    # Step 2: Get all video details (stats, description) in batches of 50
     video_details_map = {}
     video_ids = [data['video_id'] for data in playlist_items_data]
     
@@ -150,7 +140,6 @@ def get_playlist_videos(playlist_id, credentials=None):
         for video_info in video_response.get('items', []):
             video_details_map[video_info['id']] = video_info
 
-    # Step 3: Combine playlist data with video details
     videos = []
     for data in playlist_items_data:
         item = data['item']
@@ -173,28 +162,32 @@ def get_playlist_videos(playlist_id, credentials=None):
 def get_video_transcript(video_id):
     """Get transcript for a video using Webshare proxies."""
     
-    # --- WEBSHARE CONFIGURATION ---
     username = app.config.get('WEBSHARE_PROXY_USERNAME')
     password = app.config.get('WEBSHARE_PROXY_PASSWORD')
 
     proxy_config_obj = None
     
     if username and password:
-        # Create the config object (No filter_ip_locations argument needed)
         proxy_config_obj = WebshareProxyConfig(
             proxy_username=username,
             proxy_password=password
         )
-    # -----------------------------
 
     try:
-        # Initialize with the proxy config
         ytt_api = YouTubeTranscriptApi(proxy_config=proxy_config_obj)
-        
-        # Fetch the transcript
         transcript_obj = ytt_api.fetch(video_id)
         return transcript_obj.to_raw_data()
 
+    # --- VALID "EMPTY" CASES (Return empty list) ---
+    except (TranscriptsDisabled, NoTranscriptFound):
+        print(f"Video {video_id} has no transcript. Indexing metadata only.")
+        return [] 
+        
+    except VideoUnavailable:
+        print(f"Video {video_id} is unavailable. Skipping.")
+        return [] 
+
+    # --- ERROR CASES (Raise exception to trigger Retry) ---
     except Exception as e:
-        print(f"Error getting transcript for video {video_id}: {e}")
-        return []
+        print(f"Proxy/Network error for {video_id}: {e}")
+        raise e

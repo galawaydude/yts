@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 
-const IndexingQueue = ({ queue, onCancel }) => { // <-- ACCEPT onCancel
+const IndexingQueue = ({ queue, onCancel }) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   if (queue.length === 0) {
-    return null; // Don't show anything if the queue is empty
+    return null; 
   }
 
   const totalProgress = queue.reduce((acc, p) => acc + p.progress, 0);
@@ -22,7 +22,6 @@ const IndexingQueue = ({ queue, onCancel }) => { // <-- ACCEPT onCancel
             Currently Indexing ({queue.length} Playlist
             {queue.length > 1 ? 's' : ''})
           </h3>
-          {/* Show a simple overall progress bar when collapsed */}
           {isCollapsed && (
             <div className="queue-overall-progress">
               <div
@@ -37,7 +36,6 @@ const IndexingQueue = ({ queue, onCancel }) => { // <-- ACCEPT onCancel
         </button>
       </div>
 
-      {/* Collapsible section */}
       {!isCollapsed && (
         <div className="queue-items-container">
           {queue.map((playlist) => (
@@ -50,28 +48,28 @@ const IndexingQueue = ({ queue, onCancel }) => { // <-- ACCEPT onCancel
                     width: `${
                       playlist.total > 0
                         ? (playlist.progress / playlist.total) * 100
-                        : 0
+                        : (playlist.status === 'starting' ? 5 : 0) // Show a tiny bar for 'starting'
                     }%`,
                   }}
                 ></div>
               </div>
               <span className="queue-item-status">
-                {playlist.total > 0
+                {/* --- FIX: Use backend message if available --- */}
+                {playlist.message || (playlist.total > 0
                   ? `(${playlist.progress}/${playlist.total})`
-                  : 'Starting...'}
+                  : 'Starting...')}
               </span>
-              {/* === CANCELLATION FEATURE: NEW BUTTON === */}
+              
               <button
                 className="queue-item-cancel"
                 title="Cancel Indexing"
                 onClick={(e) => {
-                  e.stopPropagation(); // Stop click from collapsing
+                  e.stopPropagation(); 
                   onCancel(playlist.id, playlist.title);
                 }}
               >
                 &times;
               </button>
-              {/* ========================================= */}
             </div>
           ))}
         </div>

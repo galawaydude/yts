@@ -89,6 +89,8 @@ function App() {
               status: status.status,
               progress: status.progress,
               total: status.total,
+              // --- FIX: Save the message from backend ---
+              message: status.message 
             };
           }
         } catch (error) {
@@ -115,9 +117,11 @@ function App() {
       });
     }
     
-    setTimeout(() => {
-      setNotification(null);
-    }, 5000);
+    if (completedPlaylistsData.length > 0) {
+        setTimeout(() => {
+            setNotification(null);
+        }, 5000);
+    }
 
   }, [indexingPlaylists]);
 
@@ -175,35 +179,50 @@ function App() {
     }
   };
 
-  const handleIndexPlaylist = async (incremental = true, event = null) => {
+  const handleIndexPlaylist = async (incremental = true, event = null, force = false) => {
     if (event && event.preventDefault) {
       event.preventDefault();
     }
     if (!selectedPlaylist) return;
 
-    if (indexingPlaylists.some(p => p.id === selectedPlaylist.id)) {
+    // If forcing, we don't check if it's already in queue
+    if (!force && indexingPlaylists.some(p => p.id === selectedPlaylist.id)) {
       setNotification({ type: 'info', message: 'Playlist is in the indexing queue.' });
       return;
     }
 
     try {
       setError(null);
-      await indexPlaylist(selectedPlaylist.id, selectedPlaylist.title, incremental);
+      
+      // --- NEW: Pass 'force' param ---
+      await indexPlaylist(selectedPlaylist.id, selectedPlaylist.title, incremental, force);
 
-      setIndexingPlaylists((prev) => [
-        ...prev,
-        {
-          id: selectedPlaylist.id,
-          title: selectedPlaylist.title,
-          status: 'in_progress',
-          progress: 0,
-          total: selectedPlaylist.videoCount,
-        },
-      ]);
+      setIndexingPlaylists((prev) => {
+        // Remove if exists (for force restart)
+        const filtered = prev.filter(p => p.id !== selectedPlaylist.id);
+        return [
+            ...filtered,
+            {
+            id: selectedPlaylist.id,
+            title: selectedPlaylist.title,
+            status: 'starting',
+            message: 'Requesting start...', // Initial UI feedback
+            progress: 0,
+            total: selectedPlaylist.videoCount,
+            },
+        ];
+      });
       
       setNotification({ type: 'success', message: 'Added to indexing queue.' });
 
     } catch (error) {
+        // --- NEW: Handle 409 Conflict by offering Force Restart ---
+        if (error.response && error.response.status === 409) {
+            if (window.confirm("Indexing is already running or stuck. Do you want to FORCE restart it?")) {
+                handleIndexPlaylist(incremental, null, true); // Call recursively with force=true
+                return;
+            }
+        }
       console.error('Error starting indexing:', error);
       setError('Failed to start indexing');
     }
@@ -266,9 +285,10 @@ function App() {
     const statusBar = currentPlaylistStatus ? (
       <div className="indexing-status">
         <div className="indexing-progress">
-          {currentPlaylistStatus.total > 0
-            ? `Indexing playlist... (${currentPlaylistStatus.progress}/${currentPlaylistStatus.total})`
-            : 'Preparing to index playlist...'}
+          {/* --- FIX: Use backend message --- */}
+          {currentPlaylistStatus.message || (currentPlaylistStatus.total > 0
+            ? `Indexing... (${currentPlaylistStatus.progress}/${currentPlaylistStatus.total})`
+            : 'Initializing...')}
         </div>
         <button
           className="cancel-indexing-button"
@@ -282,7 +302,6 @@ function App() {
 
     return (
       <div className="playlist-content">
-        {/* UPDATED: Just the back button, no double title header */}
         <button className="back-button" onClick={handleBackToPlaylists}>
           ← Back to Playlists
         </button>

@@ -21,10 +21,6 @@ try:
 except Exception as e:
     logger.error(f"Failed to create metadata index on startup: {e}")
 
-
-
-
-
 @app.route('/health')
 def health_check():
     """
@@ -58,8 +54,6 @@ def health_check():
     except Exception:
         status["status"] = "degraded"
 
-    # Return 200 OK even if degraded, as the HTTP server itself is working.
-    # Some load balancers prefer 503 if degraded, but for simple monitoring 200 is usually fine.
     return jsonify(status), 200
 
 @app.route('/api/auth/login')
@@ -153,26 +147,21 @@ def get_indexing_status():
     result = AsyncResult(task_id, app=celery)
     
     if result.state == 'PENDING':
-        # Task is waiting in the queue
         return jsonify({
-            "status": "in_progress", # Tell frontend it's "in_progress"
+            "status": "in_progress", 
             "progress": 0,
             "total": 0,
             "id": playlist_id
         })
     elif result.state == 'PROGRESS':
-        # Task is actively running
         return jsonify(result.info)
     elif result.state == 'SUCCESS':
-        # Task is done, clean up the Redis key
         redis_conn.delete(task_id_key)
-        return jsonify(result.info) # Return the final status
+        return jsonify(result.info) 
     elif result.state == 'FAILURE':
-        # Task failed, clean up the Redis key
         redis_conn.delete(task_id_key)
-        return jsonify(result.info) # Return the failure status
+        return jsonify(result.info)
     
-    # Fallback for other states (REVOKED, RETRY, etc.)
     return jsonify({ "status": "not_started", "progress": 0, "total": 0 })
 
 @app.route('/api/playlist/<playlist_id>/index', methods=['POST'])
@@ -182,29 +171,30 @@ def index_playlist(playlist_id):
     if not credentials:
         return jsonify({"error": "Not authenticated"}), 401
     
-    # Check for Redis connection
     if redis_conn is None:
-        logger.error("Redis is not connected. Cannot start new task.")
         return jsonify({"error": "Task server is disconnected"}), 503
     
-    # Check if a task is already running
+    data = request.get_json() or {}
+    incremental = data.get('incremental', False)
+    playlist_title = data.get('title', playlist_id)
+    force_restart = data.get('force', False) 
+
     task_id_key = f"{TASK_KEY_PREFIX}{playlist_id}"
     existing_task_id = redis_conn.get(task_id_key)
     
-    if existing_task_id:
+    # Only block if we are NOT forcing a restart
+    if existing_task_id and not force_restart:
         result = AsyncResult(existing_task_id, app=celery)
         if result.state in ['PENDING', 'PROGRESS']:
              return jsonify({"error": "Playlist is already being indexed"}), 409
-        else:
-            # Task finished or failed, safe to overwrite
-            logger.info(f"Overwriting stale task key for {playlist_id}")
-            pass
+    
+    # If forcing, kill the old task first
+    if existing_task_id and force_restart:
+        logger.info(f"Force restarting indexing for {playlist_id}")
+        celery.control.revoke(existing_task_id, terminate=True)
+        redis_conn.delete(task_id_key)
     
     try:
-        data = request.get_json()
-        incremental = data.get('incremental', False)
-        playlist_title = data.get('title', playlist_id)
-        
         credentials_dict = {
             'token': credentials.token,
             'refresh_token': credentials.refresh_token,
@@ -250,29 +240,24 @@ def cancel_indexing(playlist_id):
         return jsonify({"error": "No running task found for this playlist"}), 404
         
     try:
-        # Get the task result object
         result = AsyncResult(task_id, app=celery)
         
         if result.state not in ['PENDING', 'PROGRESS']:
             return jsonify({"error": "Task is not in a cancellable state"}), 400
 
-        # Find the group_id from the task's metadata
         group_id = None
         if result.info and isinstance(result.info, dict):
             group_id = result.info.get("group_id")
 
-        # 1. Revoke the main "manager" task
         logger.info(f"Revoking main task: {task_id}")
         celery.control.revoke(task_id, terminate=True, signal='SIGTERM')
         
-        # 2. Revoke all the "child" tasks in the group
         if group_id:
             logger.info(f"Revoking task group: {group_id}")
             group_result = GroupResult.restore(group_id, app=celery)
             if group_result:
                 group_result.revoke(terminate=True, signal='SIGTERM')
             
-        # 3. Clean up the Redis key so a new task can be started
         redis_conn.delete(task_id_key)
         
         logger.info(f"Indexing cancelled for playlist {playlist_id}")
@@ -358,7 +343,6 @@ def delete_playlist_index(playlist_id):
             ignore=[404]
         )
         
-        # Also remove from task tracking in case it's stuck
         if redis_conn:
             redis_conn.delete(f"{TASK_KEY_PREFIX}{playlist_id}")
         
@@ -427,18 +411,24 @@ def debug_index(index_name):
         if not es.indices.exists(index=index_name):
             return jsonify({"error": "Index does not exist"}), 404
 
-        mapping = es.indices.get_mapping(index=index_name)
+        # Handle ES 8.x Object vs Dict
+        mapping_resp = es.indices.get_mapping(index=index_name)
+        mapping = mapping_resp.body if hasattr(mapping_resp, 'body') else dict(mapping_resp)
         
-        sample = es.search(
+        sample_resp = es.search(
             index=index_name,
             body={ "size": 1, "query": {"match_all": {}} }
         )
+        sample = sample_resp.body if hasattr(sample_resp, 'body') else dict(sample_resp)
+        
+        count_resp = es.count(index=index_name)
+        doc_count = count_resp.get('count', 0)
 
         return jsonify({
             "exists": True,
             "mapping": mapping,
-            "doc_count": es.count(index=index_name)['count'],
-            "sample_doc": sample['hits']['hits'][0] if sample['hits']['hits'] else None
+            "doc_count": doc_count,
+            "sample_doc": sample.get('hits', {}).get('hits', [None])[0]
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -446,12 +436,9 @@ def debug_index(index_name):
 @app.route('/api/debug/transcript/<video_id>')
 def debug_transcript(video_id):
     try:
-        # --- NEW 1.2.x USAGE ---
         ytt_api = YouTubeTranscriptApi()
         transcript_obj = ytt_api.fetch(video_id)
-        # Convert the fancy object back to a standard list of dicts
         transcript = transcript_obj.to_raw_data()
-        # -----------------------
         
         return jsonify({
             "success": True,
@@ -465,7 +452,6 @@ def debug_transcript(video_id):
             "error": str(e),
             "error_type": type(e).__name__
         }), 400
-
 
 @app.route('/api/debug/set-session')
 def debug_set_session():
