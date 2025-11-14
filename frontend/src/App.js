@@ -5,6 +5,7 @@ import SearchInterface from './components/SearchInterface';
 import LoadingScreen from './components/LoadingScreen';
 import LandingPage from './components/LandingPage';
 import IndexingQueue from './components/IndexingQueue';
+import ReadmeModal from './components/ReadmeModal'; // <-- 1. IMPORT THE NEW MODAL
 import {
   indexPlaylist,
   logout,
@@ -23,12 +24,16 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [notification, setNotification] = useState(null);
   const [indexingPlaylists, setIndexingPlaylists] = useState([]);
+  
+  // --- 2. ADD NEW STATE FOR THE MODAL ---
+  const [showReadme, setShowReadme] = useState(false);
+  // -------------------------------------
 
   const fetchIndexedPlaylists = useCallback(async () => {
     try {
       const response = await getIndexedPlaylists();
       setIndexedPlaylists(response.data.indexed_playlists || []);
-    } catch (error) {
+    } catch (error) { // <-- FIX: Added missing { and } braces
       console.error('Error fetching indexed playlists:', error);
     }
   }, []);
@@ -41,6 +46,13 @@ function App() {
         setIsAuthenticated(response.data.authenticated);
         if (response.data.authenticated) {
           fetchIndexedPlaylists();
+          
+          // --- 3. CHECK IF USER HAS SEEN THE MODAL ---
+          const hasSeenReadme = localStorage.getItem('hasSeenReadme');
+          if (!hasSeenReadme) {
+            setShowReadme(true);
+          }
+          // -------------------------------------------
         }
       } catch (error) {
         console.error('Error checking auth status:', error);
@@ -51,6 +63,13 @@ function App() {
 
     checkAuth();
   }, [fetchIndexedPlaylists]);
+
+  // --- 4. ADD A HANDLER TO CLOSE THE MODAL ---
+  const handleCloseReadme = () => {
+    localStorage.setItem('hasSeenReadme', 'true');
+    setShowReadme(false);
+  };
+  // -------------------------------------------
 
   const checkAllIndexingStatuses = useCallback(async () => {
     if (indexingPlaylists.length === 0) return;
@@ -89,7 +108,6 @@ function App() {
               status: status.status,
               progress: status.progress,
               total: status.total,
-              // --- FIX: Save the message from backend ---
               message: status.message 
             };
           }
@@ -185,7 +203,6 @@ function App() {
     }
     if (!selectedPlaylist) return;
 
-    // If forcing, we don't check if it's already in queue
     if (!force && indexingPlaylists.some(p => p.id === selectedPlaylist.id)) {
       setNotification({ type: 'info', message: 'Playlist is in the indexing queue.' });
       return;
@@ -194,11 +211,9 @@ function App() {
     try {
       setError(null);
       
-      // --- NEW: Pass 'force' param ---
       await indexPlaylist(selectedPlaylist.id, selectedPlaylist.title, incremental, force);
 
       setIndexingPlaylists((prev) => {
-        // Remove if exists (for force restart)
         const filtered = prev.filter(p => p.id !== selectedPlaylist.id);
         return [
             ...filtered,
@@ -206,7 +221,7 @@ function App() {
             id: selectedPlaylist.id,
             title: selectedPlaylist.title,
             status: 'starting',
-            message: 'Requesting start...', // Initial UI feedback
+            message: 'Requesting start...',
             progress: 0,
             total: selectedPlaylist.videoCount,
             },
@@ -216,10 +231,9 @@ function App() {
       setNotification({ type: 'success', message: 'Added to indexing queue.' });
 
     } catch (error) {
-        // --- NEW: Handle 409 Conflict by offering Force Restart ---
         if (error.response && error.response.status === 409) {
             if (window.confirm("Indexing is already running or stuck. Do you want to FORCE restart it?")) {
-                handleIndexPlaylist(incremental, null, true); // Call recursively with force=true
+                handleIndexPlaylist(incremental, null, true);
                 return;
             }
         }
@@ -285,7 +299,6 @@ function App() {
     const statusBar = currentPlaylistStatus ? (
       <div className="indexing-status">
         <div className="indexing-progress">
-          {/* --- FIX: Use backend message --- */}
           {currentPlaylistStatus.message || (currentPlaylistStatus.total > 0
             ? `Indexing... (${currentPlaylistStatus.progress}/${currentPlaylistStatus.total})`
             : 'Initializing...')}
@@ -337,6 +350,9 @@ function App() {
 
   return (
     <div className="app">
+      {/* --- 5. RENDER THE MODAL IF STATE IS TRUE --- */}
+      {showReadme && <ReadmeModal onClose={handleCloseReadme} />}
+      
       {loading ? (
         <LoadingScreen message="Loading application..." />
       ) : isAuthenticated ? (
