@@ -1,92 +1,139 @@
-# YouTube Transcript Search
 
-A powerful web application that enables efficient searching through YouTube video transcripts. Built with a sleek dark retro interface, this tool helps you find specific content within your YouTube playlists.
+# YTS
+
+  
+
+YTS (Youtube Transcript Search) is a high-performance distributed search engine designed to index and search personal YouTube playlists. Unlike standard YouTube search, which does not let you search through your playlists, YTS, lets you do that, and a little more...
+
+  
 
 ## Features
 
-- **Smart Transcript Search**: Search through video transcripts with millisecond-precise timestamps
-- **Playlist Management**: 
-  - View and manage both your created and saved playlists
-  - Automatic reindexing when playlist content changes
-  - Real-time indexing status updates
-- **Advanced Search Capabilities**:
-  - Search across multiple videos simultaneously
-  - Results show exact transcript matches with context
-  - Direct links to specific video timestamps
-- **Modern UI**:
-  - Dark retro theme with responsive design
-  - Intuitive pagination with direct page navigation
-  - Real-time search feedback and result counts
+  
 
-## Tech Stack
+- Go beyond titles. Search for any spoken word or phrase across the entire video library of a playlist to find exactly what you're looking for.
 
-- **Frontend**: React.js with custom CSS
-- **Backend**: Python
-- **APIs**: YouTube Data API, YouTube Transcript API
-- **Search**: Custom indexing and search algorithm
+- Don't just find a video—find the moment. Search results link directly to the exact timestamp a keyword was mentioned, letting you jump straight to the relevant part.
 
-## Setup
+- Use powerful query logic to narrow your results. Find videos that contain "Python" AND "Flask" but "NOT Java", or "AWS" OR "GCP"
 
-1. Clone the repository:
+- When you update a playlist, the system automatically detects and skips videos that are already indexed, downloading only the new ones. This saves time and proxy bandwidth.
+
+- For large playlists with multiple creators, you can instantly filter search results to show videos from only the specific channels you select.
+
+- Download the complete indexed data for any playlist, including all metadata and transcript segments, in a clean JSON format.
+
+  
+
+## Setup (Local Development, works only on WSL)
+
+  
+
+This guide assumes you have **Redis** and **Elasticsearch** installed and running on `localhost:6379` and `http://localhost:9200`.
+
+  
+
+### 1. Clone the Repository
+
 ```bash
-git clone [repository-url]
-cd youtube-transcript-search
+
+git clone https://github.com/galawaydude/yts
+
+cd yts
+
 ```
 
-2. Install backend dependencies:
+  
+
+### 2. Configure Backend (Python)
+
+First, set up your Python environment and install dependencies.
+
+  
+
 ```bash
+
 cd backend
+
+python3 -m venv venv
+
+source venv/bin/activate
+
 pip install -r requirements.txt
+
 ```
 
-3. Install frontend dependencies:
+  
+
+### 3. Configure Frontend (React)
+
+In a separate terminal, install the Node.js dependencies.
+
+  
+
 ```bash
+
 cd frontend
+
 npm install
+
 ```
 
-4. Set up environment variables:
-   - Create `.env` file in the backend directory
-   - Add your YouTube API credentials:
-     ```
-     YOUTUBE_API_KEY=your_api_key
-     ```
+  
 
-5. Start the backend server:
+### 4. Set Environment Variables
+
+Create a file named `.env` in the `backend/` directory.  
+
+Fill it with the stuff given in the example env
+
+  
+
+### 5. Run the Application
+
+You must run the following commands in 3 separate terminals.
+
+  
+
+#### Terminal 1: Start the Flask API
+
 ```bash
-python app.py
+
+# In the /backend directory
+
+source venv/bin/activate
+
+python run.py
+
 ```
 
-6. Start the frontend development server:
+  
+
+#### Terminal 2: Start the Celery Worker
+
 ```bash
+
+# In the /backend directory
+
+source venv/bin/activate
+
+celery -A app.celery worker --loglevel=info -P gevent -c 50
+
+```
+
+  
+
+#### Terminal 3: Start the React App
+
+```bash
+
+# In the /frontend directory
+
 npm start
+
 ```
 
-## Usage
+  
+  
 
-1. **Authentication**: 
-   - Log in with your YouTube account
-   - Grant necessary permissions for playlist access
-
-2. **Select Playlists**:
-   - Choose from your created or saved playlists
-   - Wait for initial indexing to complete
-
-3. **Search**:
-   - Enter search terms in the search bar
-   - Use the pagination controls to navigate results
-   - Click timestamp links to jump to specific video moments
-
-## Contributing
-
-Feel free to submit issues and enhancement requests!
-
-## License
-
-[Your chosen license]
-
-## Acknowledgments
-
-- YouTube Data API
-- YouTube Transcript API
-- React.js Community 
+The website is deployed here: **https://yts-88.com/**
