@@ -5,7 +5,7 @@ import SearchInterface from './components/SearchInterface';
 import LoadingScreen from './components/LoadingScreen';
 import LandingPage from './components/LandingPage';
 import IndexingQueue from './components/IndexingQueue';
-import ReadmeModal from './components/ReadmeModal'; // <-- 1. IMPORT THE NEW MODAL
+import ReadmeModal from './components/ReadmeModal'; 
 import {
   indexPlaylist,
   logout,
@@ -25,15 +25,14 @@ function App() {
   const [notification, setNotification] = useState(null);
   const [indexingPlaylists, setIndexingPlaylists] = useState([]);
   
-  // --- 2. ADD NEW STATE FOR THE MODAL ---
+  // State for the modal (Closed by default now)
   const [showReadme, setShowReadme] = useState(false);
-  // -------------------------------------
 
   const fetchIndexedPlaylists = useCallback(async () => {
     try {
       const response = await getIndexedPlaylists();
       setIndexedPlaylists(response.data.indexed_playlists || []);
-    } catch (error) { // <-- FIX: Added missing { and } braces
+    } catch (error) {
       console.error('Error fetching indexed playlists:', error);
     }
   }, []);
@@ -46,13 +45,7 @@ function App() {
         setIsAuthenticated(response.data.authenticated);
         if (response.data.authenticated) {
           fetchIndexedPlaylists();
-          
-          // --- 3. CHECK IF USER HAS SEEN THE MODAL ---
-          const hasSeenReadme = localStorage.getItem('hasSeenReadme');
-          if (!hasSeenReadme) {
-            setShowReadme(true);
-          }
-          // -------------------------------------------
+          // Removed the auto-open logic here.
         }
       } catch (error) {
         console.error('Error checking auth status:', error);
@@ -64,12 +57,9 @@ function App() {
     checkAuth();
   }, [fetchIndexedPlaylists]);
 
-  // --- 4. ADD A HANDLER TO CLOSE THE MODAL ---
   const handleCloseReadme = () => {
-    localStorage.setItem('hasSeenReadme', 'true');
     setShowReadme(false);
   };
-  // -------------------------------------------
 
   const checkAllIndexingStatuses = useCallback(async () => {
     if (indexingPlaylists.length === 0) return;
@@ -279,6 +269,12 @@ function App() {
         <LoadingScreen message="Loading playlists..." />
       ) : (
         <>
+          {/* --- NEW: The Persistent "Read Me" Trigger --- */}
+          <div className="readme-trigger" onClick={() => setShowReadme(true)}>
+            <span className="blink">⚠</span> PLEASE READ THIS BEFORE USING THE APPLICATION
+          </div>
+          {/* --------------------------------------------- */}
+
           <IndexingQueue
             queue={indexingPlaylists}
             onCancel={handleCancelIndexing}
@@ -350,7 +346,7 @@ function App() {
 
   return (
     <div className="app">
-      {/* --- 5. RENDER THE MODAL IF STATE IS TRUE --- */}
+      {/* Render Modal if state is true */}
       {showReadme && <ReadmeModal onClose={handleCloseReadme} />}
       
       {loading ? (
